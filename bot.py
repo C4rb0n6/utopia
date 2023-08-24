@@ -6,6 +6,8 @@ import wolframalpha
 import datetime
 import random
 import json
+import time
+import threading
 import os
 from dotenv import load_dotenv
 import requests
@@ -14,22 +16,24 @@ load_dotenv()
 
 TOKEN = os.getenv('TOKEN')
 openai.api_key = os.getenv('OPEN_AI_KEY')
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
-EVENT_CHANNEL_ID = int(os.getenv('EVENT_CHANNEL_ID'))
-GUILD_ID = int(os.getenv('GUILD_ID'))
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 APP_ID = os.getenv('APP_ID')
+GUILD1 = os.getenv("GUILD1")
+GUILD2 = os.getenv("GUILD2")
+GUILD_ID = [GUILD1, GUILD2]
 
 class MyClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
+        self.guild_ids = GUILD_ID  # Add the guild IDs you want to sync with
 
     async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
+        for guild_id in self.guild_ids:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
 
 intents = discord.Intents().all()
 intents.members = True
@@ -44,6 +48,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    MAX_MESSAGE_LENGTH = 2000
     user_id = message.author.id
     if message.author.bot:
         return
@@ -51,7 +56,7 @@ async def on_message(message):
         response1 = random.choice(eight_ball_list)
         channel = message.channel
         timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
-        title = f'{message.author.name}\n🎱 8ball'
+        title = f'{message.author.name}\n:8ball: 8ball'
         description = f'Q. {(message.content[7:])}\n A. {response1}'
         footer_text = f"{timestamp_str}"
         await send_embed_message(channel, title=title, description=description, footer=footer_text is not None)
@@ -65,10 +70,23 @@ async def on_message(message):
     
     # Check if the user already has a conversation, if not, create a new one
     if user_id not in keep_track:
-        keep_track[user_id] = {"conversation": list(default_persona), "persona": "default"}
+        keep_track[user_id] = {"conversation": list(default_persona), "persona": "default", "chatmodel": "GPT-3.5", "counter": 0}
 
+    model = keep_track[user_id]["chatmodel"]
+    if model == "GPT-3.5":
+        gpt4 = False
+    else:
+        keep_track[user_id]["counter"]+=1
+        gpt4 = True
+        if keep_track[user_id]["counter"] > 5:
+            gpt4 = False
+            keep_track[user_id]["chatmodel"] = "GPT-3.5"
+            await message.reply("You've reached your 6 message limit for GPT-4. Maybe come back in 3 hours idk if this code works brother. <:4Shrug:1069778894288330822>")
+            gptcooldown(user_id)
+            return
+
+    print(keep_track[user_id]["counter"])
     conversation = keep_track[user_id]["conversation"]
-
     message_str = message.content
 
     if message.reference is not None:
@@ -78,21 +96,26 @@ async def on_message(message):
     async with message.channel.typing():
         # Add the user's message to the conversation history
         conversation.append({"role": "user", "content": message_str})
-        if current_persona == "Code":
-            reply = await get_gpt_response(messages=conversation, function_call='none', temperature=0.2)
+        if gpt4:
+            reply = await get_gpt_response(messages=conversation, model="gpt-4-0613")
         else:
             reply = await get_gpt_response(messages=conversation)
-
         function_call = response['choices'][0]['message'].get('function_call')
 
         if not function_call:
             # If no function call, it's a regular assistant response
             conversation.append({"role": "assistant", "content": reply})
-            await message.reply(reply)
+            # Check if the reply length exceeds the maximum message length
+            if len(reply) <= MAX_MESSAGE_LENGTH:
+                await message.reply(reply)
+            else:
+                chunks = [reply[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(reply), MAX_MESSAGE_LENGTH)]
+                await message.reply(chunks[0])  # Reply with the first chunk
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)  # Send subsequent chunks as regular messages       
             # Update the conversation history in the keep_track dictionary
             keep_track[user_id]["conversation"] = conversation
             return
-
         else:
             # Extract the function name and arguments
             function_name = function_call['name']
@@ -106,10 +129,20 @@ async def on_message(message):
                 search_results = await search(query)
 
                 # Add the search_results / function call to the conversation history and generate a new response
-                internet_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}], function_call="none")
+                if gpt4:
+                    internet_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}], function_call="none", model="gpt-4-0613")
+                else:
+                    internet_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}], function_call="none")
                 conversation.append({"role": "function", "name": "search_internet", "content": str(search_results)})
                 conversation.append({"role": "assistant", "content": internet_response})
-                await message.reply(internet_response)
+                # Check if the reply length exceeds the maximum message length
+                if len(reply) <= MAX_MESSAGE_LENGTH:
+                    await message.reply(reply)
+                else:
+                    chunks = [reply[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(reply), MAX_MESSAGE_LENGTH)]
+                    await message.reply(chunks[0])  # Reply with the first chunk
+                    for chunk in chunks[1:]:
+                        await message.channel.send(chunk)  # Send subsequent chunks as regular messages
                 # Update the conversation history in the keep_track dictionary
                 keep_track[user_id]["conversation"] = conversation
                 return
@@ -120,13 +153,37 @@ async def on_message(message):
                 wolfram_response = await get_wolfram_response(query)
                 
                 # Add wolfram_response / function call to the conversation history and generate a new response
-                math_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}], function_call="none", temperature=0.2)
+                if gpt4:
+                    math_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}], function_call="none", temperature=0.2, model="gpt-4-0613")
+                else:
+                    math_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}], function_call="none", temperature=0.2)
                 conversation.append({"role": "function", "name": "solve_math", "content": str(wolfram_response)})
                 conversation.append({"role": "assistant", "content": math_response})
-                await message.reply(math_response)
+                # Check if the reply length exceeds the maximum message length
+                if len(reply) <= MAX_MESSAGE_LENGTH:
+                    await message.reply(reply)
+                else:
+                    chunks = [reply[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(reply), MAX_MESSAGE_LENGTH)]
+                    await message.reply(chunks[0])  # Reply with the first chunk
+                    for chunk in chunks[1:]:
+                        await message.channel.send(chunk)  # Send subsequent chunks as regular messages
                 keep_track[user_id]["conversation"] = conversation
                 return
             
+# Function to reset counter after a specific duration
+def gptcooldown(user_id):
+    duration_seconds = 3 * 60 * 60  # 3 hours in seconds
+    time.sleep(duration_seconds)
+    
+    if user_id in keep_track:
+        keep_track[user_id]["counter"] = 0
+
+# Function to start the background timer
+def start_timer(user_id):
+    thread = threading.Thread(target=gptcooldown, args=(user_id,))
+    thread.daemon = True  # The thread will exit when the main program exits
+    thread.start()
+
 async def search(query):
     print("Google Query:", query)
     page = 1
@@ -187,10 +244,10 @@ async def backup_wolfram(query):
     print("Wolfram Response:", answer)
     return answer
     
-async def get_gpt_response(messages, function_call='auto', temperature=0.5, max_tokens=850):
+async def get_gpt_response(messages, model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5, max_tokens=850):
     global response
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo-16k-0613",
+        model=model,
         messages=messages,
         functions=function_descriptions,
         function_call=function_call,
@@ -201,105 +258,51 @@ async def get_gpt_response(messages, function_call='auto', temperature=0.5, max_
 
 async def send_embed_message(channel, title, description, thumbnail_url=None, footer=True):
     embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
-
     if thumbnail_url is not None:
         embed.set_thumbnail(url=thumbnail_url)
-
     timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
     embed.set_footer(text=f"{timestamp_str}")
-
     if footer:
         embed.set_footer(text=f"{timestamp_str}")
-
     message = await channel.send(embed=embed)
-
     return message
-
-async def handle_member_event(event_type, member):
-    guild = client.get_guild(GUILD_ID)
-    message_text = None
-    channel = client.get_channel(EVENT_CHANNEL_ID)
-    timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
-    log_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    log_mention = member.name + '#' + member.discriminator
-    pfp = member.display_avatar.url
-
-    banned_users.clear() # Clear the list to ensure updated information
-    bans = guild.bans()  # Get the list of banned users in the guild
-    async for ban_entry in bans:
-        banned_users.append(ban_entry.user)
-
-    if event_type == "join":
-        title = "Member Joined"
-        description = f"{member.mention} has joined the server!"
-        color = discord.Color.green()
-        footer_text = f"{timestamp_str} | {channel.guild.name} | {len(channel.guild.members)} members"
-        message_text = "Welcome to the server!" if member.joined_at is None else "Welcome back to the server!"
-    elif event_type == "ban":
-        title = "Member Banned"
-        ban_entry = None
-        description = ''
-        for user in banned_users:
-            if user.id == member.id:
-                ban_entry = user
-                break
-        global ban_reason
-        if ban_reason != None:
-            description = f"{member.mention} has been banned for playing {ban_reason}."
-            ban_reason = None
-        else:
-            description = f"{member.mention} has been banned."
-        color = discord.Color.red()
-        footer_text = f"{timestamp_str} | {channel.guild.name} | {len(channel.guild.members)} members"
-    elif event_type == "leave":
-        title = "Member Left"
-        description = f"{member.mention} has left the server."
-        color = discord.Color.red()
-        footer_text = f"{timestamp_str} | {channel.guild.name} | {len(channel.guild.members)} members"
-        if member.bot:
-            return
-        if member.id in [user.id for user in banned_users]:
-            return
-    elif event_type == "unban":
-        title = "Member Unbanned"
-        description = f"{member.mention} has been unbanned from the server."
-        color = discord.Color.green()
-        footer_text = f"{timestamp_str} | {channel.guild.name} | {len(channel.guild.members)} members"
-    
-    if message_text != None:
-        try:
-            await member.send(message_text)
-        except discord.Forbidden:
-            print(f'Could not send message to {log_mention}')
-
-    embed = discord.Embed(title=title, description=description, color=color)
-    if pfp:
-        embed.set_thumbnail(url=pfp)
-
-    await send_embed_message(channel, title=title, description=description, thumbnail_url=pfp, footer=footer_text is not None)
-    print(f'\x1b[38;2;153;157;165m\x1b[1m{log_time}\x1b[0m \x1b[38;2;255;25;25m\x1b[1m{event_type.upper()}\x1b[0m         \x1b[1m{log_mention}\x1b[0m')
-
-@client.event
-async def on_member_join(member):
-    await handle_member_event("join", member)
-
-@client.event
-async def on_member_ban(member):
-    await handle_member_event("ban", member)
-
-@client.event
-async def on_member_remove(member):
-    await handle_member_event("leave", member)
-
-@client.event
-async def on_member_unban(member):
-    await handle_member_event("unban", member)
 
 @client.tree.command()
 async def ping(interaction: discord.Interaction):
    """Shows the bot's latency"""
+   await interaction.response.defer()
    bot_latency = round(client.latency * 1000)
-   await interaction.response.send_message(f"Pong! `{bot_latency}ms`")
+   await interaction.followup.send(f"Pong! `{bot_latency}ms`")
+
+@client.tree.command(name='model')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+        app_commands.Choice(name="GPT-3.5", value="1"),
+        app_commands.Choice(name="GPT-4", value="2"),
+    ])
+async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    user_id = interaction.user.id
+    selected_model = None
+    
+    if user_id not in keep_track:
+        keep_track[user_id] = {"conversation": list(default_persona), "persona": "default", "chatmodel": option.name, "counter": 0}
+        selected_model = option.name
+        chatmodel = option.name
+        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+    else:
+        chatmodel = keep_track[user_id]["chatmodel"]
+        if option.value == '1':
+            selected_model = option.name
+        elif option.value == '2':
+            selected_model = option.name
+        
+        if chatmodel == selected_model:
+            await interaction.response.send_message(f"**{selected_model}** is already selected.")
+        else:
+            keep_track[user_id]["chatmodel"] = selected_model
+            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+    
+    print(keep_track[user_id]["chatmodel"])
 
 @client.tree.command(name='personas')
 @app_commands.describe(option="Which to choose..")
@@ -357,7 +360,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         message (str): Your question
         persona (Optional[app_commands.Choice[str]]): Choose a persona
     """
-    await interaction.response.send_message("<a:typing:1136369547973234708>")
+    await interaction.response.defer()
     message_str = str(message)
     if persona:
         for persona_data in persona_dict.values():
@@ -372,34 +375,31 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     reply = await get_gpt_response(messages=conversation)
     function_call = response['choices'][0]['message'].get('function_call')
     if not function_call:
-            await interaction.edit_original_response(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{reply}"**')
+            await interaction.followup.send(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{reply}"**')
             return
     else:
             # Extract the function name and arguments
             function_name = function_call['name']
             arguments = function_call['arguments']
-
-
             # Check if the function name matches your search function
             if function_name == 'search_internet':
                 # Extract the necessary arguments from the generated JSON
                 arguments_dict = json.loads(arguments)
                 query = arguments_dict['query']
                 search_results = await search(query)
-
                 # Add search_results to the conversation history
                 internet_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}], function_call="none")
-                await interaction.edit_original_response(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{internet_response}"**')
+                await interaction.followup.send(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{internet_response}"**')
                 return
+            
             if function_name == 'solve_math':
                 # Extract the necessary arguments from the generated JSON
                 arguments_dict = json.loads(arguments)
                 query = arguments_dict['query']
                 wolfram_response = await get_wolfram_response(query)
-                
                 # Add wolfram_response to the conversation history and generate a new response
                 math_response = await get_gpt_response(messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}], function_call="none", temperature=0.2)
-                await interaction.edit_original_response(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{math_response}"**')
+                await interaction.followup.send(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{math_response}"**')
                 return
 
 client.run(TOKEN)
