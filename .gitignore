@@ -1,0 +1,18 @@
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+
+# Ignore the .env file that contains sensitive information
+.env
+meow.py
+
+# Ignore VS Code settings (optional)
+.vscode/settings.json
+
+# Ignore IDE or editor-specific files and directories
+.vscode/
+.idea/
+
+# Ignore build and distribution directories
+build/
+dist/
