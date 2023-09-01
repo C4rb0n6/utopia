@@ -1,7 +1,9 @@
 import discord
 import openai
 from discord import app_commands
-from botinfo import default_persona, persona_dict, eight_ball_list, function_descriptions, keep_track
+from botinfo import default_persona, persona_dict, eight_ball_list, function_descriptions, keep_track, newdickt
+import asyncio
+import time
 import wolframalpha
 import datetime
 import random
@@ -12,7 +14,8 @@ import requests
 
 load_dotenv()
 
-MAX_MESSAGE_LENGTH = 2000
+message_cooldown = 900 # time to clear keep_safe dict (15 minutes in seconds)
+MAX_MESSAGE_LENGTH = 2000 # 2000 characters
 TOKEN = os.getenv('TOKEN')
 openai.api_key = os.getenv('OPEN_AI_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
@@ -22,13 +25,11 @@ GUILD1 = os.getenv("GUILD1")
 GUILD2 = os.getenv("GUILD2")
 GUILD_ID = [GUILD1, GUILD2]
 
-newdickt = {}
-
 class MyClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
-        self.guild_ids = GUILD_ID  # Add the guild IDs you want to sync with
+        self.guild_ids = GUILD_ID
 
     async def setup_hook(self):
         for guild_id in self.guild_ids:
@@ -46,9 +47,11 @@ client = MyClient(intents=intents)
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
+    asyncio.create_task(clear_expired_messages(message_cooldown))
 
 @client.event
 async def on_message(message):
+    timestamp = time.time()
     user_id = message.author.id
     if message.author.bot:
         return
@@ -70,7 +73,8 @@ async def on_message(message):
     
     # Check if the user already has a conversation, if not, create a new one
     if user_id not in keep_track:
-        keep_track[user_id] = {"conversation": list(default_persona), "persona": "default"}
+        keep_track[user_id] = {"conversation": list(default_persona), "persona": "default", "timestamp": timestamp}
+    keep_track[user_id]["timestamp"] = timestamp
 
     if user_id not in newdickt:
         newdickt[user_id] = {"chatmodel": "GPT-3.5", "counter": 0}
@@ -99,14 +103,11 @@ async def on_message(message):
         else:
             reply = await get_gpt_response(messages=conversation)
         function_call = response['choices'][0]['message'].get('function_call')
-        print(function_call)
 
         if not function_call:
-            # If no function call, it's a regular assistant response
             conversation.append({"role": "assistant", "content": reply})
             content = reply
             await message_reply(content, message)      
-            # Update the conversation history in the keep_track dictionary
             keep_track[user_id]["conversation"] = conversation
             return
         else:
@@ -124,6 +125,18 @@ async def on_message(message):
                 content = await math(arguments, gpt4, conversation, user_id)
                 await message_reply(content, message)
                 return
+            
+# Define a coroutine to periodically check and remove expired messages
+async def clear_expired_messages(message_cooldown):
+    while True:
+        current_time = time.time()
+
+        for user_id, data in keep_track.copy().items():
+            timestamp = data["timestamp"]
+            if current_time - timestamp > message_cooldown:
+                del keep_track[user_id]
+
+        await asyncio.sleep(1)  # Adjust the sleep interval as needed
             
 async def internet(arguments, gpt4, conversation, user_id):
     arguments_dict = json.loads(arguments)
@@ -221,7 +234,7 @@ async def backup_wolfram(query):
     print("Wolfram Response:", answer)
     return answer
     
-async def get_gpt_response(messages, model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5, max_tokens=2000):
+async def get_gpt_response(messages, model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5, max_tokens=2500):
     global response
     response = await openai.ChatCompletion.acreate(
         model=model,
@@ -231,7 +244,6 @@ async def get_gpt_response(messages, model="gpt-3.5-turbo-16k-0613", function_ca
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    print(response['choices'][0]['message'])
     return response['choices'][0]['message']['content']
 
 async def send_embed_message(channel, title, description, thumbnail_url=None, footer=True):
@@ -305,6 +317,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         Choose a persona
 
     """
+    timestamp = time.time()
     await interaction.response.defer()
     global current_persona
     for persona in persona_dict.values():
@@ -318,7 +331,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
             persona = persona_dict[f"{current_persona}"]["persona"]
             # Update the user's conversation and persona in the keep_track dictionary
             user_id = interaction.user.id
-            keep_track[user_id] = {"conversation": list(persona), "persona": current_persona}
+            keep_track[user_id] = {"conversation": list(persona), "persona": current_persona, "timestamp": timestamp}
             await interaction.followup.send(f"Persona changed to **{current_persona}**.")
             return
 
@@ -338,6 +351,12 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         app_commands.Choice(name="Republican", value="2"),
         app_commands.Choice(name="Chef", value="3"),
         app_commands.Choice(name="Math", value="4"),
+        app_commands.Choice(name="Code", value="5"),
+        app_commands.Choice(name="Ego", value="9"),
+        app_commands.Choice(name="Fitness Trainer", value="12"),
+        app_commands.Choice(name="Gordon Ramsay", value="13"),
+        app_commands.Choice(name="DAN", value="14"),
+        app_commands.Choice(name="Default", value="16"),
     ])
 async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None):
     """

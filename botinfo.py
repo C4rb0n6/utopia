@@ -25,6 +25,8 @@ banned_users = []
 
 keep_track = {}
 
+newdickt = {}
+
 ban_reason = None
 
 persona_1 = [
