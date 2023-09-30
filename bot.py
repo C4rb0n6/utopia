@@ -17,7 +17,7 @@ load_dotenv()
 message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
 TOKEN = os.getenv('TOKEN')
-openai.api_key = os.getenv('OPEN_AI_KEY')
+openai.api_key = os.getenv('VANC_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 APP_ID = os.getenv('APP_ID')
@@ -73,14 +73,13 @@ async def on_message(message):
 
     # Check if the user already has a conversation, if not, create a new one
     if user_id not in keep_track:
-        current_date = datetime.datetime.now()
-        date = f"This is the current date: {current_date}"
-        default_persona_copy = list(default_persona)  # Create a copy of the default_persona list
-        default_persona_copy[0]["content"] += " " + date  # Append the date string to the content
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
+        default_persona_copy[0]["content"] += " " + date
         keep_track[user_id] = {"conversation": default_persona_copy, "persona": "default", "timestamp": timestamp}
-        print(keep_track[user_id])
     keep_track[user_id]["timestamp"] = timestamp
-
+    print(keep_track[user_id])
     if user_id not in newdickt:
         newdickt[user_id] = {"chatmodel": "GPT-3.5", "counter": 0}
 
@@ -149,7 +148,7 @@ async def clear_expired_messages(message_cooldown):
             if current_time - timestamp > message_cooldown:
                 del keep_track[user_id]
 
-        await asyncio.sleep(1)  # Adjust the sleep interval as needed
+        await asyncio.sleep(30)  # Adjust the sleep interval as needed
 
 
 async def eight_ball(message):
@@ -217,13 +216,11 @@ async def message_reply(content, message):
 
 async def search(query):
     print("Google Query:", query)
-    num = 3  # Number of results to return
+    num = 7  # Number of results to return
     url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={query}&num={num}"
     data = requests.get(url).json()
-    print(data)
 
     search_items = data.get("items")
-    print(search_items)
     results = []
 
     for i, search_item in enumerate(search_items, start=1):
@@ -443,7 +440,11 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                 conversation = list(selected_persona)
                 break
     else:
-        conversation = list(default_persona)
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
+        default_persona_copy[0]["content"] += " " + date
+        conversation = default_persona_copy
 
     conversation.append({"role": "user", "content": message_str})
     reply = await get_gpt_response(messages=conversation)
