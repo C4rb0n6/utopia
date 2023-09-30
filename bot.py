@@ -17,7 +17,7 @@ load_dotenv()
 message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
 TOKEN = os.getenv('TOKEN')
-openai.api_key = os.getenv('VANC_KEY')
+openai.api_key = os.getenv('OPEN_AI_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 APP_ID = os.getenv('APP_ID')
@@ -408,25 +408,32 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
 
 
 @client.tree.command(name='gpt')
-@app_commands.describe(persona="Which persona to choose..")
-@app_commands.choices(persona=[
-    app_commands.Choice(name="Republican", value="2"),
-    app_commands.Choice(name="Chef", value="3"),
-    app_commands.Choice(name="Math", value="4"),
-    app_commands.Choice(name="Code", value="5"),
-    app_commands.Choice(name="Ego", value="9"),
-    app_commands.Choice(name="Fitness Trainer", value="12"),
-    app_commands.Choice(name="Gordon Ramsay", value="13"),
-    app_commands.Choice(name="DAN", value="14"),
-    app_commands.Choice(name="Default", value="16"),
-])
-async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None):
+@app_commands.describe(persona="Which persona to choose..", model="Which model to choose..")
+@app_commands.choices(
+    persona=[
+        app_commands.Choice(name="Republican", value="2"),
+        app_commands.Choice(name="Chef", value="3"),
+        app_commands.Choice(name="Math", value="4"),
+        app_commands.Choice(name="Code", value="5"),
+        app_commands.Choice(name="Ego", value="9"),
+        app_commands.Choice(name="Fitness Trainer", value="12"),
+        app_commands.Choice(name="Gordon Ramsay", value="13"),
+        app_commands.Choice(name="DAN", value="14"),
+        app_commands.Choice(name="Default", value="16"),
+    ],
+    model=[
+        app_commands.Choice(name="GPT-3.5", value="17"),
+        app_commands.Choice(name="GPT-4", value="18"),
+    ]
+)
+async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None, model: app_commands.Choice[str] = None):
     """
     Ask ChatGPT a question
 
     Args:
         message (str): Your question
         persona (Optional[app_commands.Choice[str]]): Choose a persona
+        model (Optional[app_commands.Choice[str]]): Choose a model
     """
     await interaction.response.defer()
     message_str = str(message)
@@ -446,8 +453,16 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         default_persona_copy[0]["content"] += " " + date
         conversation = default_persona_copy
 
+    if model.value == '17':
+        selected_model = model.name
+    elif model.value == '18':
+        selected_model = model.name
+
     conversation.append({"role": "user", "content": message_str})
-    reply = await get_gpt_response(messages=conversation)
+    if selected_model == "GPT-4":
+        reply = await get_gpt_response(messages=conversation, model="gpt-4-0613")
+    else:
+        reply = await get_gpt_response(messages=conversation)
     function_call = response['choices'][0]['message'].get('function_call')
 
     if not function_call:
