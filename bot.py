@@ -27,7 +27,7 @@ GUILD_ID = [GUILD1, GUILD2]
 
 
 class MyClient(discord.Client):
-    def __init__(self, *, intents: discord.Intents):
+    def __init__(self, *, intents):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.guild_ids = GUILD_ID
@@ -52,14 +52,14 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    if message.content.startswith("?8ball "):
+        await eight_ball(message)
+        return
+
     timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
     user_id = message.author.id
 
     if message.author.bot:
-        return
-
-    if message.content.startswith("?8ball "):
-        await eight_ball(message)
         return
 
     if message.channel.name != 'chat-gpt':
@@ -81,11 +81,11 @@ async def on_message(message):
     keep_track[user_id]["timestamp"] = timestamp
     print(keep_track[user_id])
     if user_id not in newdickt:
-        newdickt[user_id] = {"chatmodel": "GPT-3.5", "counter": 0}
+        newdickt[user_id] = {"chat-model": "GPT-3.5", "counter": 0, "timestamp": timestamp}
 
-    model = newdickt[user_id]["chatmodel"]
+    chat_model = newdickt[user_id]["chat-model"]
 
-    if model == "GPT-3.5":
+    if chat_model == "GPT-3.5":
         gpt4 = False
     else:  # If user not is using GPT-3.5 then keep track of their message count on GPT-4
         gpt4 = True
@@ -109,7 +109,7 @@ async def on_message(message):
         # Add the user's message to the conversation history
         conversation.append({"role": "user", "content": message_str})
         if gpt4:
-            reply = await get_gpt_response(messages=conversation, model="gpt-4-0613")
+            reply = await get_gpt_response(messages=conversation, chat_model="gpt-4-0613")
         else:
             reply = await get_gpt_response(messages=conversation)
         function_call = response['choices'][0]['message'].get('function_call')
@@ -143,10 +143,15 @@ async def clear_expired_messages(message_cooldown):
     while True:
         current_time = time.time()
 
-        for user_id, data in keep_track.copy().items():
-            timestamp = data["timestamp"]
+        for user_id in keep_track.copy():
+            timestamp = keep_track[user_id]["timestamp"]
             if current_time - timestamp > message_cooldown:
                 del keep_track[user_id]
+
+        for user_id in newdickt.copy():
+            timestamp = newdickt[user_id]["timestamp"]
+            if current_time - timestamp > message_cooldown:
+                del newdickt[user_id]
 
         await asyncio.sleep(30)  # Adjust the sleep interval as needed
 
@@ -157,9 +162,9 @@ async def eight_ball(message):
     timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
     title = f'{message.author.name}\n:8ball: 8ball'
     description = f'Q. {(message.content[7:])}\n A. {eight_ball_message}'
-    footer_text = f"{timestamp_str}"
-    await send_embed_message(channel, title=title, description=description, footer=footer_text is not None)
-    return
+    embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
+    embed.set_footer(text=f"{timestamp_str}")
+    await channel.send(embed=embed)
 
 
 async def internet(arguments, gpt4, conversation, user_id):
@@ -170,7 +175,7 @@ async def internet(arguments, gpt4, conversation, user_id):
     if gpt4:
         internet_response = await get_gpt_response(
             messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}],
-            function_call="none", model="gpt-4-0613")
+            function_call="none", chat_model="gpt-4-0613")
     else:
         internet_response = await get_gpt_response(
             messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}],
@@ -190,7 +195,7 @@ async def math(arguments, gpt4, conversation, user_id):
     if gpt4:
         math_response = await get_gpt_response(
             messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-            function_call="none", temperature=0.2, model="gpt-4-0613")
+            function_call="none", temperature=0.2, chat_model="gpt-4-0613")
     else:
         math_response = await get_gpt_response(
             messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
@@ -266,8 +271,8 @@ async def get_wolfram_response(query):
 
 async def backup_wolfram(query):
     print("Backup Wolfram Query:", query)
-    client = wolframalpha.Client(APP_ID)
-    wolfram_data = client.query(query)
+    wolfram = wolframalpha.Client(APP_ID)
+    wolfram_data = wolfram.query(query)
 
     try:
         answer = next(wolfram_data.results).text
@@ -279,11 +284,11 @@ async def backup_wolfram(query):
     return answer
 
 
-async def get_gpt_response(messages, model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5,
+async def get_gpt_response(messages, chat_model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5,
                            max_tokens=2500):
     global response
     response = await openai.ChatCompletion.acreate(
-        model=model,
+        model=chat_model,
         messages=messages,
         functions=function_descriptions,
         function_call=function_call,
@@ -329,27 +334,24 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
     """
     user_id = interaction.user.id
     selected_model = None
+    timestamp = time.time()
 
     if user_id not in newdickt:
-        newdickt[user_id] = {"chatmodel": option.name, "counter": 0}
+        newdickt[user_id] = {"chat-model": option.name, "counter": 0, "timestamp": timestamp}
         selected_model = option.name
-        chatmodel = option.name
         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
     else:
-        chatmodel = newdickt[user_id]["chatmodel"]
+        chat_model = newdickt[user_id]["chat-model"]
 
-        if option.value == '1':
-            selected_model = option.name
-        elif option.value == '2':
-            selected_model = option.name
+        selected_model = option.name
 
-        if chatmodel == selected_model:
+        if chat_model == selected_model:
             await interaction.response.send_message(f"**{selected_model}** is already selected.")
         else:
-            newdickt[user_id]["chatmodel"] = selected_model
+            newdickt[user_id]["chat-model"] = selected_model
             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
 
-    print(newdickt[user_id]["chatmodel"])
+    print(newdickt[user_id]["chat-model"])
 
 
 @client.tree.command(name='personas')
@@ -426,7 +428,8 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         app_commands.Choice(name="GPT-4", value="18"),
     ]
 )
-async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None, model: app_commands.Choice[str] = None):
+async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None,
+              model: app_commands.Choice[str] = None):
     """
     Ask ChatGPT a question
 
@@ -436,15 +439,18 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         model (Optional[app_commands.Choice[str]]): Choose a model
     """
     await interaction.response.defer()
+    conversation = None
+    chat_model = None
     message_str = str(message)
 
     if persona:
         for persona_data in persona_dict.values():
 
             if persona_data['value'] == persona.value:
-                current_persona = persona_data['name']
-                selected_persona = persona_dict[f"{current_persona}"]["persona"]
+                persona = persona_data['name']
+                selected_persona = persona_dict[f"{persona}"]["persona"]
                 conversation = list(selected_persona)
+                print(conversation)
                 break
     else:
         current_date = datetime.datetime.now(datetime.timezone.utc)
@@ -453,14 +459,12 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         default_persona_copy[0]["content"] += " " + date
         conversation = default_persona_copy
 
-    if model.value == '17':
-        selected_model = model.name
-    elif model.value == '18':
-        selected_model = model.name
+    if model:
+        chat_model = model.name
 
     conversation.append({"role": "user", "content": message_str})
-    if selected_model == "GPT-4":
-        reply = await get_gpt_response(messages=conversation, model="gpt-4-0613")
+    if chat_model == "GPT-4":
+        reply = await get_gpt_response(messages=conversation, chat_model="gpt-4-0613")
     else:
         reply = await get_gpt_response(messages=conversation)
     function_call = response['choices'][0]['message'].get('function_call')
@@ -473,15 +477,22 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         function_name = function_call['name']
         arguments = function_call['arguments']
         # Check if the function name matches your search function
-
         if function_name == 'search_internet':
             # Extract the necessary arguments from the generated JSON
             arguments_dict = json.loads(arguments)
             query = arguments_dict['query']
             search_results = await search(query)
             # Add search_results to the conversation history
-            internet_response = await get_gpt_response(messages=conversation + [
-                {"role": "function", "name": "search_internet", "content": str(search_results)}], function_call="none")
+            if chat_model == "GPT-4":
+                internet_response = await get_gpt_response(
+                    messages=conversation + [
+                        {"role": "function", "name": "search_internet", "content": str(search_results)}],
+                    function_call="none", chat_model="gpt-4-0613")
+            else:
+                internet_response = await get_gpt_response(
+                    messages=conversation + [
+                        {"role": "function", "name": "search_internet", "content": str(search_results)}],
+                    function_call="none")
             await interaction.followup.send(
                 content=f'*{interaction.user.mention} - {message_str}*\n\n**"{internet_response}"**')
             return
@@ -492,9 +503,16 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
             query = arguments_dict['query']
             wolfram_response = await get_wolfram_response(query)
             # Add wolfram_response to the conversation history and generate a new response
-            math_response = await get_gpt_response(
-                messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-                function_call="none", temperature=0.2)
+            if chat_model == "GPT-4":
+                math_response = await get_gpt_response(
+                    messages=conversation + [
+                        {"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
+                    function_call="none", temperature=0.2, chat_model="gpt-4-0613")
+            else:
+                math_response = await get_gpt_response(
+                    messages=conversation + [
+                        {"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
+                    function_call="none", temperature=0.2)
             await interaction.followup.send(
                 content=f'*{interaction.user.mention} - {message_str}*\n\n**"{math_response}"**')
             return
