@@ -17,7 +17,8 @@ load_dotenv()
 message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
 TOKEN = os.getenv('TOKEN')
-openai.api_key = os.getenv('OPEN_AI_KEY')
+# openai.api_key = os.getenv('OPEN_AI_KEY')
+openai.api_key = os.getenv('VANC_KEY')  # gpt4 key
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 APP_ID = os.getenv('APP_ID')
@@ -161,7 +162,7 @@ async def eight_ball(message):
     channel = message.channel
     timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
     title = f'{message.author.name}\n:8ball: 8ball'
-    description = f'Q. {(message.content[7:])}\n A. {eight_ball_message}'
+    description = f'Q. {(message.content[7:])}\nA. {eight_ball_message}'
     embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
     embed.set_footer(text=f"{timestamp_str}")
     await channel.send(embed=embed)
@@ -366,6 +367,7 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
     app_commands.Choice(name="Fitness Trainer", value="12"),
     app_commands.Choice(name="Gordon Ramsay", value="13"),
     app_commands.Choice(name="DAN", value="14"),
+    app_commands.Choice(name="Prompt", value="17"),
     app_commands.Choice(name="Default", value="16"),
 ])
 async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
@@ -393,6 +395,13 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
             # Update the user's conversation and persona in the keep_track dictionary
             user_id = interaction.user.id
             keep_track[user_id] = {"conversation": list(persona), "persona": current_persona, "timestamp": timestamp}
+            if option.value == '17':
+                conversation = keep_track[user_id]["conversation"]
+                rep = await get_gpt_response(messages=conversation, function_call="none")
+                conversation.append({"role": "assistant", "content": rep})
+                keep_track[user_id]["conversation"] = conversation
+                await interaction.followup.send(rep)
+                return
             await interaction.followup.send(f"Persona changed to **{current_persona}**.")
             return
 
