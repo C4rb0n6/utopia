@@ -1,26 +1,29 @@
-import discord
-import openai
-from discord import app_commands
-from botinfo import default_persona, persona_dict, eight_ball_list, function_descriptions, keep_track, newdickt
-import asyncio
-import time
-import wolframalpha
 import datetime
-import random
 import json
 import os
-from dotenv import load_dotenv
+import random
+import time
+
+import discord
 import requests
+from discord import app_commands
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from botinfo import (
+    eight_ball_list,
+    keep_track,
+)
 
 load_dotenv()
 
-message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
+
 TOKEN = os.getenv('TOKEN')
-# openai.api_key = os.getenv('OPEN_AI_KEY')
-openai.api_key = os.getenv('VANC_KEY')  # gpt4 key
+vanc_key = os.getenv('VANC_KEY')  # gpt4 key
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
+weather_api_key = os.getenv('WEATHER_API_KEY')
 APP_ID = os.getenv('APP_ID')
 GUILD1 = os.getenv("GUILD1")
 GUILD2 = os.getenv("GUILD2")
@@ -43,20 +46,66 @@ class MyClient(discord.Client):
 intents = discord.Intents().all()
 client = MyClient(intents=intents)
 
+open_ai_client = OpenAI(api_key=vanc_key)
 
 @client.event
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
-    asyncio.create_task(clear_expired_messages(message_cooldown))
 
+
+assistant = open_ai_client.beta.assistants.create(
+    name="Yuji",
+    instructions="I'm pretty sure field does nothing. Hi, Dean.",
+    tools=[
+        {"type": "code_interpreter"},
+        {
+            "type": "function",
+            "function": {
+                "name": "search_internet",
+                "description": "Search the internet using Google's API. Returns top 7 search results.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "lat": {
+                            "type": "number",
+                            "description": "Latitude coordinate"
+                        },
+                        "lon": {
+                            "type": "number",
+                            "description": "Longitude coordinate"
+                        }
+                    },
+                    "required": ["lat", "lon"]
+                }
+            }
+        }
+    ],
+    model="gpt-4-1106-preview"
+)
+
+def create_thread():
+    return open_ai_client.beta.threads.create()
 
 @client.event
 async def on_message(message):
-    if message.content.startswith("?8ball "):
-        await eight_ball(message)
-        return
-
     timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
     user_id = message.author.id
 
@@ -72,89 +121,90 @@ async def on_message(message):
     if message.type == discord.MessageType.pins_add:
         return
 
-    # Check if the user already has a conversation, if not, create a new one
     if user_id not in keep_track:
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
-        default_persona_copy[0]["content"] += " " + date
-        keep_track[user_id] = {"conversation": default_persona_copy, "persona": "default", "timestamp": timestamp}
-    keep_track[user_id]["timestamp"] = timestamp
-    print(keep_track[user_id])
-    if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": "GPT-3.5", "counter": 0, "timestamp": timestamp}
-
-    chat_model = newdickt[user_id]["chat-model"]
-
-    if chat_model == "GPT-3.5":
-        gpt4 = False
-    else:  # If user not is using GPT-3.5 then keep track of their message count on GPT-4
-        gpt4 = True
-        newdickt[user_id]['counter'] += 1
-
-        if newdickt[user_id]['counter'] > 5:  # Might add message cap later
-            pass
-
-        mention = message.author.display_name
-        print(f"{mention} is on {newdickt[user_id]['counter']} GPT-4 Message(s)")
-
-    conversation = keep_track[user_id]["conversation"]
-    message_str = message.content
-
-    # If the message is a reply append the parent message to the convo
-    if message.reference is not None:
-        original_message = await message.channel.fetch_message(message.reference.message_id)
-        conversation.append({"role": "assistant", "content": original_message.content})
+        thread = create_thread()
+        keep_track[user_id] = {"thread": thread.id, "timestamp": timestamp}
 
     async with message.channel.typing():
-        # Add the user's message to the conversation history
-        conversation.append({"role": "user", "content": message_str})
-        if gpt4:
-            reply = await get_gpt_response(messages=conversation, chat_model="gpt-4-0613")
-        else:
-            reply = await get_gpt_response(messages=conversation)
-        function_call = response['choices'][0]['message'].get('function_call')
+        open_ai_client.beta.threads.messages.create(
+            thread_id=keep_track[user_id]['thread'],
+            role="user",
+            content=message.content
+        )
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
 
-        if not function_call:
-            conversation.append({"role": "assistant", "content": reply})
-            content = reply
-            await message_reply(content, message)
-            keep_track[user_id]["conversation"] = conversation
-            return
-        else:
-            # Extract the function name and arguments
-            function_name = function_call['name']
-            arguments = function_call['arguments']
+        run = open_ai_client.beta.threads.runs.create(
+            thread_id=keep_track[user_id]['thread'],
+            assistant_id=assistant.id,
+            instructions="Always address the user as daddy." + date
+        )
 
-            # Check if the function name matches search
-            if function_name == 'search_internet':
-                content = await internet(arguments, gpt4, conversation, user_id)
-                await message_reply(content, message)
+        while run.status != "completed":
+            time.sleep(1)
+            run = open_ai_client.beta.threads.runs.retrieve(
+                thread_id=keep_track[user_id]['thread'],
+                run_id=run.id
+            )
+            meow = []
+            # Check if there are tool calls to handle
+            if run.status == "requires_action":
+                tool_calls = run.required_action.submit_tool_outputs.tool_calls
+                for tool_call in tool_calls:
+                    tool_call_id = tool_call.id
+                    tool_name = tool_call.function.name
+                    tool_arguments_json = tool_call.function.arguments
+                    tool_arguments_dict = json.loads(tool_arguments_json)
+
+                    if tool_name == "get_weather":
+                        lat = tool_arguments_dict["lat"]
+                        lon = tool_arguments_dict["lon"]
+                        function_data = await get_weather(lat, lon)
+
+                    if tool_name == "search_internet":
+                        query = tool_arguments_dict["query"]
+                        function_data = await search(query)
+
+                    meow.append({
+                        "tool_call_id": tool_call_id,
+                        "output": function_data
+                    })  # Append the tool output to the list
+
+                # Submit all tool outputs after processing all tool calls
+                open_ai_client.beta.threads.runs.submit_tool_outputs(
+                    thread_id=keep_track[user_id]['thread'],
+                    run_id=run.id,
+                    tool_outputs=meow
+                )
+
+        gpt_messages = open_ai_client.beta.threads.messages.list(thread_id=keep_track[user_id]['thread'])
+        for msg in gpt_messages.data:
+            if msg.role == "assistant":
+                await message_reply(msg.content[0].text.value, message)
                 return
 
-            # Check if the function name matches wolfram
-            if function_name == 'solve_math':
-                content = await math(arguments, gpt4, conversation, user_id)
-                await message_reply(content, message)
-                return
+async def get_weather(lat, lon):
+    api_key = '18d92eb0404edf78cc69383fb89a25af'
+    # Create the API URL with latitude and longitude parameters
+    url = f'http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial'
 
+    # Send a GET request to the API
+    response = requests.get(url)
 
-# Define a coroutine to periodically check and remove expired messages
-async def clear_expired_messages(message_cooldown):
-    while True:
-        current_time = time.time()
+    # Check if the request was successful (status code 200)
+    if response.status_code == 200:
+        # Parse the JSON data in the response
+        data = response.json()
 
-        for user_id in keep_track.copy():
-            timestamp = keep_track[user_id]["timestamp"]
-            if current_time - timestamp > message_cooldown:
-                del keep_track[user_id]
+        # Extract the relevant information from the JSON response
+        temperature = data['main']['temp']
+        weather_description = data['weather'][0]['description']
 
-        for user_id in newdickt.copy():
-            timestamp = newdickt[user_id]["timestamp"]
-            if current_time - timestamp > message_cooldown:
-                del newdickt[user_id]
-
-        await asyncio.sleep(30)  # Adjust the sleep interval as needed
+        # Return the weather information as a dictionary
+        return f"{temperature} F, {weather_description}"
+    else:
+        # Return an error message if the request was not successful
+        return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
 
 
 async def eight_ball(message):
@@ -168,46 +218,6 @@ async def eight_ball(message):
     await channel.send(embed=embed)
 
 
-async def internet(arguments, gpt4, conversation, user_id):
-    arguments_dict = json.loads(arguments)
-    query = arguments_dict['query']
-    search_results = await search(query)
-
-    if gpt4:
-        internet_response = await get_gpt_response(
-            messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}],
-            function_call="none", chat_model="gpt-4-0613")
-    else:
-        internet_response = await get_gpt_response(
-            messages=conversation + [{"role": "function", "name": "search_internet", "content": str(search_results)}],
-            function_call="none")
-
-    conversation.append({"role": "function", "name": "search_internet", "content": str(search_results)})
-    conversation.append({"role": "assistant", "content": internet_response})
-    keep_track[user_id]["conversation"] = conversation
-    return internet_response
-
-
-async def math(arguments, gpt4, conversation, user_id):
-    arguments_dict = json.loads(arguments)
-    query = arguments_dict['query']
-    wolfram_response = await get_wolfram_response(query)
-
-    if gpt4:
-        math_response = await get_gpt_response(
-            messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-            function_call="none", temperature=0.2, chat_model="gpt-4-0613")
-    else:
-        math_response = await get_gpt_response(
-            messages=conversation + [{"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-            function_call="none", temperature=0.2)
-
-    conversation.append({"role": "function", "name": "solve_math", "content": str(wolfram_response)})
-    conversation.append({"role": "assistant", "content": math_response})
-    keep_track[user_id]["conversation"] = conversation
-    return math_response
-
-
 async def message_reply(content, message):
     if len(content) <= MAX_MESSAGE_LENGTH:
         await message.reply(content)
@@ -218,7 +228,6 @@ async def message_reply(content, message):
             await message.channel.send(chunk)  # Send subsequent chunks as regular messages
 
     return
-
 
 async def search(query):
     print("Google Query:", query)
@@ -251,52 +260,30 @@ async def search(query):
     return output
 
 
-async def get_wolfram_response(query):
-    print("Wolfram Query:", query)
-    app_id = APP_ID
-    query_encoded = query.replace(" ", "+")
+async def get_weather(lat, lon):
+    # Create the API URL with latitude and longitude parameters
+    url = f'http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={weather_api_key}&units=imperial'
 
-    url = f"http://api.wolframalpha.com/v1/result?appid={app_id}&i={query_encoded}"
+    # Send a GET request to the API
+    response = requests.get(url)
 
-    wolfram_data = requests.get(url)
+    # Check if the request was successful (status code 200)
+    if response.status_code == 200:
+        # Parse the JSON data in the response
+        data = response.json()
 
-    if wolfram_data.status_code == 200:
-        short_answer = wolfram_data.text.strip()
-        print("Wolfram Response:", short_answer)
-        return short_answer
+        # Extract the relevant information from the JSON response
+        temperature = data['main']['temp']
+        weather_description = data['weather'][0]['description']
+
+        # Return the weather information as a dictionary
+        return {
+            'temperature': temperature,
+            'weather_description': weather_description
+        }
     else:
-        print("No short answer available, trying backup...")
-        long_answer = await backup_wolfram(query)
-        return long_answer
-
-
-async def backup_wolfram(query):
-    print("Backup Wolfram Query:", query)
-    wolfram = wolframalpha.Client(APP_ID)
-    wolfram_data = wolfram.query(query)
-
-    try:
-        answer = next(wolfram_data.results).text
-    except:
-        print("Error: No result found")
-        return "Error: No result found"
-
-    print("Wolfram Response:", answer)
-    return answer
-
-
-async def get_gpt_response(messages, chat_model="gpt-3.5-turbo-16k-0613", function_call='auto', temperature=0.5,
-                           max_tokens=2500):
-    global response
-    response = await openai.ChatCompletion.acreate(
-        model=chat_model,
-        messages=messages,
-        functions=function_descriptions,
-        function_call=function_call,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return response['choices'][0]['message']['content']
+        # Return an error message if the request was not successful
+        return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
 
 
 async def send_embed_message(channel, title, description, thumbnail_url=None, footer=True):
@@ -320,211 +307,6 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.defer()
     bot_latency = round(client.latency * 1000)
     await interaction.followup.send(f"Pong! `{bot_latency}ms`")
-
-
-@client.tree.command(name='model')
-@app_commands.describe(option="Which to choose..")
-@app_commands.choices(option=[
-    app_commands.Choice(name="GPT-3.5", value="1"),
-    app_commands.Choice(name="GPT-4", value="2"),
-])
-async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
-    """
-        Choose a model
-
-    """
-    user_id = interaction.user.id
-    selected_model = None
-    timestamp = time.time()
-
-    if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": option.name, "counter": 0, "timestamp": timestamp}
-        selected_model = option.name
-        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-    else:
-        chat_model = newdickt[user_id]["chat-model"]
-
-        selected_model = option.name
-
-        if chat_model == selected_model:
-            await interaction.response.send_message(f"**{selected_model}** is already selected.")
-        else:
-            newdickt[user_id]["chat-model"] = selected_model
-            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-
-    print(newdickt[user_id]["chat-model"])
-
-
-@client.tree.command(name='personas')
-@app_commands.describe(option="Which to choose..")
-@app_commands.choices(option=[
-    app_commands.Choice(name="Current Persona", value="1"),
-    app_commands.Choice(name="Republican", value="2"),
-    app_commands.Choice(name="Chef", value="3"),
-    app_commands.Choice(name="Math", value="4"),
-    app_commands.Choice(name="Code", value="5"),
-    app_commands.Choice(name="Ego", value="9"),
-    app_commands.Choice(name="Fitness Trainer", value="12"),
-    app_commands.Choice(name="Gordon Ramsay", value="13"),
-    app_commands.Choice(name="DAN", value="14"),
-    app_commands.Choice(name="Prompt", value="17"),
-    app_commands.Choice(name="Default", value="16"),
-])
-async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
-    """
-        Choose a persona
-
-    """
-    timestamp = time.time()
-    await interaction.response.defer()
-    global current_persona
-
-    for persona in persona_dict.values():
-
-        if persona['value'] == option.value:
-            current_persona = persona['name']
-            break
-
-    if option.value in [persona_info["value"] for persona_info in persona_dict.values()]:
-        current_persona = next(
-            (persona_info["name"] for persona_info in persona_dict.values() if persona_info["value"] == option.value),
-            None)
-
-        if current_persona:
-            persona = persona_dict[f"{current_persona}"]["persona"]
-            # Update the user's conversation and persona in the keep_track dictionary
-            user_id = interaction.user.id
-            keep_track[user_id] = {"conversation": list(persona), "persona": current_persona, "timestamp": timestamp}
-            if option.value == '17':
-                conversation = keep_track[user_id]["conversation"]
-                rep = await get_gpt_response(messages=conversation, function_call="none")
-                conversation.append({"role": "assistant", "content": rep})
-                keep_track[user_id]["conversation"] = conversation
-                await interaction.followup.send(rep)
-                return
-            await interaction.followup.send(f"Persona changed to **{current_persona}**.")
-            return
-
-    if option.value == '1':
-        user_id = interaction.user.id
-
-        if user_id not in keep_track:
-            current_per = "Default"
-        else:
-            current_per = keep_track[user_id]["persona"]
-
-        response = f"**Current Persona:** {current_per}"
-        await interaction.followup.send(response)
-        return
-
-
-@client.tree.command(name='gpt')
-@app_commands.describe(persona="Which persona to choose..", model="Which model to choose..")
-@app_commands.choices(
-    persona=[
-        app_commands.Choice(name="Republican", value="2"),
-        app_commands.Choice(name="Chef", value="3"),
-        app_commands.Choice(name="Math", value="4"),
-        app_commands.Choice(name="Code", value="5"),
-        app_commands.Choice(name="Ego", value="9"),
-        app_commands.Choice(name="Fitness Trainer", value="12"),
-        app_commands.Choice(name="Gordon Ramsay", value="13"),
-        app_commands.Choice(name="DAN", value="14"),
-        app_commands.Choice(name="Default", value="16"),
-    ],
-    model=[
-        app_commands.Choice(name="GPT-3.5", value="17"),
-        app_commands.Choice(name="GPT-4", value="18"),
-    ]
-)
-async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None,
-              model: app_commands.Choice[str] = None):
-    """
-    Ask ChatGPT a question
-
-    Args:
-        message (str): Your question
-        persona (Optional[app_commands.Choice[str]]): Choose a persona
-        model (Optional[app_commands.Choice[str]]): Choose a model
-    """
-    await interaction.response.defer()
-    conversation = None
-    chat_model = None
-    message_str = str(message)
-
-    if persona:
-        for persona_data in persona_dict.values():
-
-            if persona_data['value'] == persona.value:
-                persona = persona_data['name']
-                selected_persona = persona_dict[f"{persona}"]["persona"]
-                conversation = list(selected_persona)
-                print(conversation)
-                break
-    else:
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
-        default_persona_copy[0]["content"] += " " + date
-        conversation = default_persona_copy
-
-    if model:
-        chat_model = model.name
-
-    conversation.append({"role": "user", "content": message_str})
-    if chat_model == "GPT-4":
-        reply = await get_gpt_response(messages=conversation, chat_model="gpt-4-0613")
-    else:
-        reply = await get_gpt_response(messages=conversation)
-    function_call = response['choices'][0]['message'].get('function_call')
-
-    if not function_call:
-        await interaction.followup.send(content=f'*{interaction.user.mention} - {message_str}*\n\n**"{reply}"**')
-        return
-    else:
-        # Extract the function name and arguments
-        function_name = function_call['name']
-        arguments = function_call['arguments']
-        # Check if the function name matches your search function
-        if function_name == 'search_internet':
-            # Extract the necessary arguments from the generated JSON
-            arguments_dict = json.loads(arguments)
-            query = arguments_dict['query']
-            search_results = await search(query)
-            # Add search_results to the conversation history
-            if chat_model == "GPT-4":
-                internet_response = await get_gpt_response(
-                    messages=conversation + [
-                        {"role": "function", "name": "search_internet", "content": str(search_results)}],
-                    function_call="none", chat_model="gpt-4-0613")
-            else:
-                internet_response = await get_gpt_response(
-                    messages=conversation + [
-                        {"role": "function", "name": "search_internet", "content": str(search_results)}],
-                    function_call="none")
-            await interaction.followup.send(
-                content=f'*{interaction.user.mention} - {message_str}*\n\n**"{internet_response}"**')
-            return
-
-        if function_name == 'solve_math':
-            # Extract the necessary arguments from the generated JSON
-            arguments_dict = json.loads(arguments)
-            query = arguments_dict['query']
-            wolfram_response = await get_wolfram_response(query)
-            # Add wolfram_response to the conversation history and generate a new response
-            if chat_model == "GPT-4":
-                math_response = await get_gpt_response(
-                    messages=conversation + [
-                        {"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-                    function_call="none", temperature=0.2, chat_model="gpt-4-0613")
-            else:
-                math_response = await get_gpt_response(
-                    messages=conversation + [
-                        {"role": "function", "name": "solve_math", "content": str(wolfram_response)}],
-                    function_call="none", temperature=0.2)
-            await interaction.followup.send(
-                content=f'*{interaction.user.mention} - {message_str}*\n\n**"{math_response}"**')
-            return
 
 
 client.run(TOKEN)

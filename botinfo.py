@@ -95,19 +95,48 @@ function_descriptions = [
             },
             "required": ["query"],
         }
-    },
+    }
+]
+
+
+tools=[
+    {"type": "code_interpreter"},
     {
-        "name": "solve_math",
-        "description": "Solve math problems using WolframAlpha's API.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The math problem to be solved"
-                }
-            },
-            "required": ["query"],
+        "type": "function",
+        "function": {
+            "name": "search_internet",
+            "description": "Search the internet using Google's API. Returns top 7 search results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query"
+                    }
+                },
+                "required": ["query"],
+            }
         }
     },
-]
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": "Latitude coordinate"
+                    },
+                    "lon": {
+                        "type": "number",
+                        "description": "Longitude coordinate"
+                    }
+                },
+                "required": ["lat", "lon"],
+            }
+        }
+    }
+],
