@@ -9,7 +9,7 @@ import discord
 import requests
 from discord import app_commands
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from botinfo import (
     eight_ball_list,
@@ -22,10 +22,12 @@ load_dotenv()
 
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
 message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
+global_timestamp = ""
 
 TOKEN = os.getenv('TOKEN')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
+weather_api_key = os.getenv('WEATHER_API_KEY')
 vanc_key = os.getenv('VANC_KEY')  # gpt4 key
 GUILD1 = os.getenv("GUILD1")
 GUILD2 = os.getenv("GUILD2")
@@ -47,22 +49,24 @@ class MyClient(discord.Client):
 intents = discord.Intents().all()
 client = MyClient(intents=intents)
 
-open_ai_client = OpenAI(api_key=vanc_key)
+open_ai_client = AsyncOpenAI(api_key=vanc_key)
+
 
 @client.event
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
     asyncio.create_task(clear_expired_messages(message_cooldown))
+    asyncio.create_task(timestamp())
 
 
-def create_assistant(model):
+async def create_assistant(model):
     chat_model = None
     if model == "GPT-4-Turbo":
         chat_model = "gpt-4-1106-preview"
     elif model == "GPT-4-Vision":
         chat_model = "gpt-4-vision-preview"
-    assistant = open_ai_client.beta.assistants.create(
+    assistant = await open_ai_client.beta.assistants.create(
             name="Math Tutor",
             instructions="You are a personal math tutor. Write and run code to answer math questions.",
             tools=[
@@ -110,8 +114,10 @@ def create_assistant(model):
         )
     return assistant
 
-def create_thread():
-    return open_ai_client.beta.threads.create()
+
+async def create_thread():
+    return await open_ai_client.beta.threads.create()
+
 
 # Define a coroutine to periodically check and remove expired messages
 async def clear_expired_messages(message_cooldown):
@@ -130,8 +136,13 @@ async def clear_expired_messages(message_cooldown):
 
         await asyncio.sleep(30)  # Adjust the sleep interval as needed
 
+
 @client.event
 async def on_message(message):
+    if message.content.startswith("?8ball "):
+        await eight_ball(message)
+        return
+
     timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
     user_id = message.author.id
 
@@ -148,7 +159,7 @@ async def on_message(message):
         return
 
     if user_id not in keep_track:
-        thread = create_thread()
+        thread = await create_thread()
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
         instructions = "All your messages will be sent in discord. Use appropriate formatting. " + date
@@ -158,26 +169,27 @@ async def on_message(message):
 
     if user_id not in newdickt:
         newdickt[user_id] = {"chat-model": 'GPT-4-Turbo', "timestamp": timestamp}
+    else:
+        pass
 
     async with message.channel.typing():
-        open_ai_client.beta.threads.messages.create(
+        await open_ai_client.beta.threads.messages.create(
             thread_id=keep_track[user_id]['thread'],
             role="user",
             content=message.content
         )
 
-        assistant = create_assistant(newdickt[user_id]['chat-model'])
+        assistant = await create_assistant(newdickt[user_id]['chat-model'])
 
-        run = open_ai_client.beta.threads.runs.create(
+        run = await open_ai_client.beta.threads.runs.create(
             thread_id=keep_track[user_id]['thread'],
             assistant_id=assistant.id,
-
             instructions=instructions
         )
 
         while run.status != "completed":
-            time.sleep(1)
-            run = open_ai_client.beta.threads.runs.retrieve(
+            await asyncio.sleep(1)
+            run = await open_ai_client.beta.threads.runs.retrieve(
                 thread_id=keep_track[user_id]['thread'],
                 run_id=run.id
             )
@@ -206,51 +218,17 @@ async def on_message(message):
                     })  # Append the tool output to the list
 
                 # Submit all tool outputs after processing all tool calls
-                open_ai_client.beta.threads.runs.submit_tool_outputs(
+                await open_ai_client.beta.threads.runs.submit_tool_outputs(
                     thread_id=keep_track[user_id]['thread'],
                     run_id=run.id,
                     tool_outputs=meow
                 )
 
-        gpt_messages = open_ai_client.beta.threads.messages.list(thread_id=keep_track[user_id]['thread'])
+        gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=keep_track[user_id]['thread'])
         for msg in gpt_messages.data:
             if msg.role == "assistant":
                 await message_reply(msg.content[0].text.value, message)
                 return
-
-async def get_weather(lat, lon):
-    api_key = '18d92eb0404edf78cc69383fb89a25af'
-    # Create the API URL with latitude and longitude parameters
-    url = f'http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial'
-
-    # Send a GET request to the API
-    response = requests.get(url)
-
-    # Check if the request was successful (status code 200)
-    if response.status_code == 200:
-        # Parse the JSON data in the response
-        data = response.json()
-
-        # Extract the relevant information from the JSON response
-        temperature = data['main']['temp']
-        weather_description = data['weather'][0]['description']
-
-        # Return the weather information as a dictionary
-        return f"{temperature} F, {weather_description}"
-    else:
-        # Return an error message if the request was not successful
-        return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
-
-
-async def eight_ball(message):
-    eight_ball_message = random.choice(eight_ball_list)
-    channel = message.channel
-    timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
-    title = f'{message.author.name}\n:8ball: 8ball'
-    description = f'Q. {(message.content[7:])}\nA. {eight_ball_message}'
-    embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
-    embed.set_footer(text=f"{timestamp_str}")
-    await channel.send(embed=embed)
 
 
 async def message_reply(content, message):
@@ -264,8 +242,9 @@ async def message_reply(content, message):
 
     return
 
+
 async def search(query):
-    print("Google Query:", query)
+    #print("Google Query:", query)
     num = 3  # Number of results to return
     url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={query}&num={num}"
     data = requests.get(url).json()
@@ -291,7 +270,7 @@ async def search(query):
         results.append(result_str)
 
     output = "\n".join(results)
-    print("Google Response:", output)
+    #print("Google Response:", output)
     return output
 
 
@@ -312,37 +291,42 @@ async def get_weather(lat, lon):
         weather_description = data['weather'][0]['description']
 
         # Return the weather information as a dictionary
-        return {
-            'temperature': temperature,
-            'weather_description': weather_description
-        }
+        return f"{temperature} F, {weather_description}"
     else:
         # Return an error message if the request was not successful
         return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
 
 
-async def send_embed_message(channel, title, description, thumbnail_url=None, footer=True):
-    embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
-
-    if thumbnail_url is not None:
-        embed.set_thumbnail(url=thumbnail_url)
-    timestamp_str = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
-    embed.set_footer(text=f"{timestamp_str}")
-
-    if footer:
-        embed.set_footer(text=f"{timestamp_str}")
-
-    message = await channel.send(embed=embed)
-    return message
-
-
-@client.tree.command()
-async def ping(interaction: discord.Interaction):
-    """Returns the bot latency"""
-    await interaction.response.defer()
-    bot_latency = round(client.latency * 1000)
-    await interaction.followup.send(f"Pong! `{bot_latency}ms`")
-
+# @client.tree.command(name='model')
+# @app_commands.describe(option="Which to choose..")
+# @app_commands.choices(option=[
+#     app_commands.Choice(name="GPT-4-Turbo", value="1"),
+#     app_commands.Choice(name="GPT-4-Vision", value="2"),
+# ])
+# async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+#     """
+#         Choose a model
+#
+#     """
+#     user_id = interaction.user.id
+#     selected_model = None
+#
+#     if user_id not in newdickt:
+#         newdickt[user_id] = {"chat-model": option.name}
+#         selected_model = option.name
+#         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+#     else:
+#         chat_model = newdickt[user_id]["chat-model"]
+#
+#         selected_model = option.name
+#
+#         if chat_model == selected_model:
+#             await interaction.response.send_message(f"**{selected_model}** is already selected.")
+#         else:
+#             newdickt[user_id]["chat-model"] = selected_model
+#             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+#
+#     print(newdickt[user_id]["chat-model"])
 
 @client.tree.command(name='gpt')
 @app_commands.describe(persona="Which persona to choose..")
@@ -370,7 +354,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     await interaction.response.defer()
     timestamp = time.time()
     user_id = interaction.user.id
-    thread = create_thread()
+    thread = await create_thread()
     instructions = None
     message_str = str(message)
 
@@ -387,17 +371,17 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     else:
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        instructions = "Always address the user as daddy." + date
+        instructions = "All your messages will be sent in discord. Use appropriate formatting. " + date
 
-    open_ai_client.beta.threads.messages.create(
+    await open_ai_client.beta.threads.messages.create(
         thread_id=thread.id,
         role="user",
         content=message_str
     )
 
-    assistant = create_assistant(newdickt[user_id]['chat-model'])
+    assistant = await create_assistant(newdickt[user_id]['chat-model'])
 
-    run = open_ai_client.beta.threads.runs.create(
+    run = await open_ai_client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=assistant.id,
 
@@ -405,8 +389,8 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     )
 
     while run.status != "completed":
-        time.sleep(1)
-        run = open_ai_client.beta.threads.runs.retrieve(
+        await asyncio.sleep(1)
+        run = await open_ai_client.beta.threads.runs.retrieve(
             thread_id=thread.id,
             run_id=run.id
         )
@@ -435,13 +419,13 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                 })  # Append the tool output to the list
 
             # Submit all tool outputs after processing all tool calls
-            open_ai_client.beta.threads.runs.submit_tool_outputs(
+            await open_ai_client.beta.threads.runs.submit_tool_outputs(
                 thread_id=thread.id,
                 run_id=run.id,
                 tool_outputs=meow
             )
 
-    gpt_messages = open_ai_client.beta.threads.messages.list(thread_id=thread.id)
+    gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=thread.id)
     for msg in gpt_messages.data:
         if msg.role == "assistant":
             await interaction.followup.send(
@@ -470,7 +454,6 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
     """
     timestamp = time.time()
     await interaction.response.defer()
-    global current_persona
 
     for persona in persona_dict.values():
 
@@ -488,6 +471,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
             # Update the user's conversation and persona in the keep_track dictionary
             user_id = interaction.user.id
             thread = create_thread()
+            print(persona_dict)
             keep_track[user_id] = {"thread": thread.id, "instructions": persona[0]["content"], "persona": current_persona, "timestamp": timestamp}
             await interaction.followup.send(f"Persona changed to **{current_persona}**.")
             return
@@ -504,5 +488,29 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         await interaction.followup.send(response)
         return
 
+
+async def eight_ball(message):
+    eight_ball_message = random.choice(eight_ball_list)
+    question = message.content[7:]
+    title = f'{message.author.name}\n:8ball: 8ball'
+    description = f'Q. {question}\nA. {eight_ball_message}'
+    embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
+    embed.set_footer(text=global_timestamp)
+    channel = message.channel
+    await channel.send(embed=embed)
+
+async def timestamp():
+    global global_timestamp
+    while True:
+        global_timestamp = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
+        await asyncio.sleep(10)
+
+
+@client.tree.command()
+async def ping(interaction: discord.Interaction):
+    """Returns the bot latency"""
+    await interaction.response.defer()
+    bot_latency = round(client.latency * 1000)
+    await interaction.followup.send(f"Pong! `{bot_latency}ms`")
 
 client.run(TOKEN)
