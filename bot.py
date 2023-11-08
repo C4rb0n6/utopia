@@ -4,6 +4,7 @@ import os
 import random
 import time
 
+import asyncio
 import discord
 import requests
 from discord import app_commands
@@ -13,22 +14,22 @@ from openai import OpenAI
 from botinfo import (
     eight_ball_list,
     keep_track,
+    newdickt,
+    persona_dict
 )
 
 load_dotenv()
 
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
+message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
 
 TOKEN = os.getenv('TOKEN')
-vanc_key = os.getenv('VANC_KEY')  # gpt4 key
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
-weather_api_key = os.getenv('WEATHER_API_KEY')
-APP_ID = os.getenv('APP_ID')
+vanc_key = os.getenv('VANC_KEY')  # gpt4 key
 GUILD1 = os.getenv("GUILD1")
 GUILD2 = os.getenv("GUILD2")
 GUILD_ID = [GUILD1, GUILD2]
-
 
 class MyClient(discord.Client):
     def __init__(self, *, intents):
@@ -52,57 +53,82 @@ open_ai_client = OpenAI(api_key=vanc_key)
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
+    asyncio.create_task(clear_expired_messages(message_cooldown))
 
 
-assistant = open_ai_client.beta.assistants.create(
-    name="Yuji",
-    instructions="I'm pretty sure field does nothing. Hi, Dean.",
-    tools=[
-        {"type": "code_interpreter"},
-        {
-            "type": "function",
-            "function": {
-                "name": "search_internet",
-                "description": "Search the internet using Google's API. Returns top 7 search results.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query"
+def create_assistant(model):
+    chat_model = None
+    if model == "GPT-4-Turbo":
+        chat_model = "gpt-4-1106-preview"
+    elif model == "GPT-4-Vision":
+        chat_model = "gpt-4-vision-preview"
+    assistant = open_ai_client.beta.assistants.create(
+            name="Math Tutor",
+            instructions="You are a personal math tutor. Write and run code to answer math questions.",
+            tools=[
+                {"type": "code_interpreter"},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_internet",
+                        "description": "Search the internet using Google's API. Returns top 7 search results.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query"
+                                }
+                            },
+                            "required": ["query"],
                         }
-                    },
-                    "required": ["query"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "lat": {
-                            "type": "number",
-                            "description": "Latitude coordinate"
-                        },
-                        "lon": {
-                            "type": "number",
-                            "description": "Longitude coordinate"
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "lat": {
+                                    "type": "number",
+                                    "description": "Latitude coordinate"
+                                },
+                                "lon": {
+                                    "type": "number",
+                                    "description": "Longitude coordinate"
+                                }
+                            },
+                            "required": ["lat", "lon"],
                         }
-                    },
-                    "required": ["lat", "lon"]
+                    }
                 }
-            }
-        }
-    ],
-    model="gpt-4-1106-preview"
-)
+            ],
+            model=chat_model
+        )
+    return assistant
 
 def create_thread():
     return open_ai_client.beta.threads.create()
+
+# Define a coroutine to periodically check and remove expired messages
+async def clear_expired_messages(message_cooldown):
+    while True:
+        current_time = time.time()
+
+        for user_id in keep_track.copy():
+            timestamp = keep_track[user_id]["timestamp"]
+            if current_time - timestamp > message_cooldown:
+                del keep_track[user_id]
+
+        for user_id in newdickt.copy():
+            timestamp = newdickt[user_id]["timestamp"]
+            if current_time - timestamp > message_cooldown:
+                del newdickt[user_id]
+
+        await asyncio.sleep(30)  # Adjust the sleep interval as needed
 
 @client.event
 async def on_message(message):
@@ -123,7 +149,15 @@ async def on_message(message):
 
     if user_id not in keep_track:
         thread = create_thread()
-        keep_track[user_id] = {"thread": thread.id, "timestamp": timestamp}
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+        instructions = "All your messages will be sent in discord. Use appropriate formatting. " + date
+        keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default", "timestamp": timestamp}
+    else:
+        instructions = keep_track[user_id]["instructions"]
+
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": 'GPT-4-Turbo', "timestamp": timestamp}
 
     async with message.channel.typing():
         open_ai_client.beta.threads.messages.create(
@@ -131,13 +165,14 @@ async def on_message(message):
             role="user",
             content=message.content
         )
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+
+        assistant = create_assistant(newdickt[user_id]['chat-model'])
 
         run = open_ai_client.beta.threads.runs.create(
             thread_id=keep_track[user_id]['thread'],
             assistant_id=assistant.id,
-            instructions="Always address the user as daddy." + date
+
+            instructions=instructions
         )
 
         while run.status != "completed":
@@ -231,7 +266,7 @@ async def message_reply(content, message):
 
 async def search(query):
     print("Google Query:", query)
-    num = 7  # Number of results to return
+    num = 3  # Number of results to return
     url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={query}&num={num}"
     data = requests.get(url).json()
 
@@ -307,6 +342,167 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.defer()
     bot_latency = round(client.latency * 1000)
     await interaction.followup.send(f"Pong! `{bot_latency}ms`")
+
+
+@client.tree.command(name='gpt')
+@app_commands.describe(persona="Which persona to choose..")
+@app_commands.choices(
+    persona=[
+        app_commands.Choice(name="Republican", value="2"),
+        app_commands.Choice(name="Chef", value="3"),
+        app_commands.Choice(name="Math", value="4"),
+        app_commands.Choice(name="Code", value="5"),
+        app_commands.Choice(name="Ego", value="9"),
+        app_commands.Choice(name="Fitness Trainer", value="12"),
+        app_commands.Choice(name="Gordon Ramsay", value="13"),
+        app_commands.Choice(name="DAN", value="14"),
+        app_commands.Choice(name="Default", value="16"),
+    ]
+)
+async def gpt(interaction: discord.Interaction, message: str, persona: app_commands.Choice[str] = None):
+    """
+    Ask ChatGPT a question
+
+    Args:
+        message (str): Your question
+        persona (Optional[app_commands.Choice[str]]): Choose a persona
+    """
+    await interaction.response.defer()
+    timestamp = time.time()
+    user_id = interaction.user.id
+    thread = create_thread()
+    instructions = None
+    message_str = str(message)
+
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": 'GPT-4-Turbo', "timestamp": timestamp}
+
+    if persona:
+        for persona_data in persona_dict.values():
+            if persona_data['value'] == persona.value:
+                persona = persona_data['name']
+                selected_persona = persona_dict[f"{persona}"]["persona"]
+                instructions = selected_persona[0]["content"]
+                break
+    else:
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+        instructions = "Always address the user as daddy." + date
+
+    open_ai_client.beta.threads.messages.create(
+        thread_id=thread.id,
+        role="user",
+        content=message_str
+    )
+
+    assistant = create_assistant(newdickt[user_id]['chat-model'])
+
+    run = open_ai_client.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=assistant.id,
+
+        instructions=instructions
+    )
+
+    while run.status != "completed":
+        time.sleep(1)
+        run = open_ai_client.beta.threads.runs.retrieve(
+            thread_id=thread.id,
+            run_id=run.id
+        )
+        meow = []
+        # Check if there are tool calls to handle
+        if run.status == "requires_action":
+            tool_calls = run.required_action.submit_tool_outputs.tool_calls
+            for tool_call in tool_calls:
+                tool_call_id = tool_call.id
+                tool_name = tool_call.function.name
+                tool_arguments_json = tool_call.function.arguments
+                tool_arguments_dict = json.loads(tool_arguments_json)
+
+                if tool_name == "get_weather":
+                    lat = tool_arguments_dict["lat"]
+                    lon = tool_arguments_dict["lon"]
+                    function_data = await get_weather(lat, lon)
+
+                if tool_name == "search_internet":
+                    query = tool_arguments_dict["query"]
+                    function_data = await search(query)
+
+                meow.append({
+                    "tool_call_id": tool_call_id,
+                    "output": function_data
+                })  # Append the tool output to the list
+
+            # Submit all tool outputs after processing all tool calls
+            open_ai_client.beta.threads.runs.submit_tool_outputs(
+                thread_id=thread.id,
+                run_id=run.id,
+                tool_outputs=meow
+            )
+
+    gpt_messages = open_ai_client.beta.threads.messages.list(thread_id=thread.id)
+    for msg in gpt_messages.data:
+        if msg.role == "assistant":
+            await interaction.followup.send(
+                content=f'***{interaction.user.mention} - {message_str}***\n\n{msg.content[0].text.value}')
+            return
+
+@client.tree.command(name='personas')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+    app_commands.Choice(name="Current Persona", value="1"),
+    app_commands.Choice(name="Republican", value="2"),
+    app_commands.Choice(name="Chef", value="3"),
+    app_commands.Choice(name="Math", value="4"),
+    app_commands.Choice(name="Code", value="5"),
+    app_commands.Choice(name="Ego", value="9"),
+    app_commands.Choice(name="Fitness Trainer", value="12"),
+    app_commands.Choice(name="Gordon Ramsay", value="13"),
+    app_commands.Choice(name="DAN", value="14"),
+    app_commands.Choice(name="Prompt", value="17"),
+    app_commands.Choice(name="Default", value="16"),
+])
+async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    """
+        Choose a persona
+
+    """
+    timestamp = time.time()
+    await interaction.response.defer()
+    global current_persona
+
+    for persona in persona_dict.values():
+
+        if persona['value'] == option.value:
+            current_persona = persona['name']
+            break
+
+    if option.value in [persona_info["value"] for persona_info in persona_dict.values()]:
+        current_persona = next(
+            (persona_info["name"] for persona_info in persona_dict.values() if persona_info["value"] == option.value),
+            None)
+
+        if current_persona:
+            persona = persona_dict[f"{current_persona}"]["persona"]
+            # Update the user's conversation and persona in the keep_track dictionary
+            user_id = interaction.user.id
+            thread = create_thread()
+            keep_track[user_id] = {"thread": thread.id, "instructions": persona[0]["content"], "persona": current_persona, "timestamp": timestamp}
+            await interaction.followup.send(f"Persona changed to **{current_persona}**.")
+            return
+
+    if option.value == '1':
+        user_id = interaction.user.id
+
+        if user_id not in keep_track:
+            current_per = "Default"
+        else:
+            current_per = keep_track[user_id]["persona"]
+
+        response = f"**Current Persona:** {current_per}"
+        await interaction.followup.send(response)
+        return
 
 
 client.run(TOKEN)
