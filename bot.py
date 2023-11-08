@@ -181,11 +181,6 @@ async def on_message(message):
     else:
         instructions = keep_track[user_id]["instructions"]
 
-    if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": 'GPT-4-Turbo', "timestamp": timestamp}
-    else:
-        pass
-
     async with message.channel.typing():
         await open_ai_client.beta.threads.messages.create(
             thread_id=keep_track[user_id]['thread'],
@@ -322,11 +317,12 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
         Choose a model
 
     """
+    timestamp = time.time()
     user_id = interaction.user.id
     selected_model = None
 
     if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": option.name}
+        newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
         selected_model = option.name
         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
     else:
@@ -391,7 +387,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         content=message_str
     )
 
-    assistant = await create_assistant(newdickt[user_id]['chat-model'])
+    assistant = await create_assistant()
 
     run = await open_ai_client.beta.threads.runs.create(
         thread_id=thread.id,
