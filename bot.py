@@ -15,7 +15,9 @@ from botinfo import (
     eight_ball_list,
     keep_track,
     newdickt,
-    persona_dict
+    vision_dict,
+    persona_dict,
+    default_persona
 )
 
 load_dotenv()
@@ -60,12 +62,8 @@ async def on_ready():
     asyncio.create_task(timestamp())
 
 
-async def create_assistant(model):
-    chat_model = None
-    if model == "GPT-4-Turbo":
-        chat_model = "gpt-4-1106-preview"
-    elif model == "GPT-4-Vision":
-        chat_model = "gpt-4-vision-preview"
+async def create_assistant():
+    chat_model = "gpt-4-1106-preview"
     assistant = await open_ai_client.beta.assistants.create(
             name="Math Tutor",
             instructions="You are a personal math tutor. Write and run code to answer math questions.",
@@ -134,6 +132,11 @@ async def clear_expired_messages(message_cooldown):
             if current_time - timestamp > message_cooldown:
                 del newdickt[user_id]
 
+        for user_id in vision_dict.copy():
+            timestamp = vision_dict[user_id]["timestamp"]
+            if current_time - timestamp > message_cooldown:
+                del vision_dict[user_id]
+
         await asyncio.sleep(30)  # Adjust the sleep interval as needed
 
 
@@ -158,6 +161,17 @@ async def on_message(message):
     if message.type == discord.MessageType.pins_add:
         return
 
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": "GPT-4-Turbo", "timestamp": timestamp}
+    elif user_id in newdickt:
+        chat_model = newdickt[user_id]["chat-model"]
+        if chat_model == "GPT-4-Vision":
+            print("meow")
+            async with message.channel.typing():
+                response = await get_vision(message)
+                await message_reply(response, message)
+                return
+
     if user_id not in keep_track:
         thread = await create_thread()
         current_date = datetime.datetime.now(datetime.timezone.utc)
@@ -179,7 +193,7 @@ async def on_message(message):
             content=message.content
         )
 
-        assistant = await create_assistant(newdickt[user_id]['chat-model'])
+        assistant = await create_assistant()
 
         run = await open_ai_client.beta.threads.runs.create(
             thread_id=keep_track[user_id]['thread'],
@@ -297,36 +311,34 @@ async def get_weather(lat, lon):
         return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
 
 
-# @client.tree.command(name='model')
-# @app_commands.describe(option="Which to choose..")
-# @app_commands.choices(option=[
-#     app_commands.Choice(name="GPT-4-Turbo", value="1"),
-#     app_commands.Choice(name="GPT-4-Vision", value="2"),
-# ])
-# async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
-#     """
-#         Choose a model
-#
-#     """
-#     user_id = interaction.user.id
-#     selected_model = None
-#
-#     if user_id not in newdickt:
-#         newdickt[user_id] = {"chat-model": option.name}
-#         selected_model = option.name
-#         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-#     else:
-#         chat_model = newdickt[user_id]["chat-model"]
-#
-#         selected_model = option.name
-#
-#         if chat_model == selected_model:
-#             await interaction.response.send_message(f"**{selected_model}** is already selected.")
-#         else:
-#             newdickt[user_id]["chat-model"] = selected_model
-#             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-#
-#     print(newdickt[user_id]["chat-model"])
+@client.tree.command(name='model')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+    app_commands.Choice(name="GPT-4-Turbo", value="1"),
+    app_commands.Choice(name="GPT-4-Vision", value="2"),
+])
+async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    """
+        Choose a model
+
+    """
+    user_id = interaction.user.id
+    selected_model = None
+
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": option.name}
+        selected_model = option.name
+        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+    else:
+        chat_model = newdickt[user_id]["chat-model"]
+
+        selected_model = option.name
+
+        if chat_model == selected_model:
+            await interaction.response.send_message(f"**{selected_model}** is already selected.")
+        else:
+            newdickt[user_id]["chat-model"] = selected_model
+            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
 
 @client.tree.command(name='gpt')
 @app_commands.describe(persona="Which persona to choose..")
@@ -504,6 +516,67 @@ async def timestamp():
     while True:
         global_timestamp = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
         await asyncio.sleep(10)
+
+
+async def get_vision(message):
+    timestamp = time.time()
+    user_id = message.author.id
+    # Check if the user already has a conversation, if not, create a new one
+    if user_id not in vision_dict:
+        current_date = datetime.datetime.now(datetime.timezone.utc)
+        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
+        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
+        default_persona_copy[0]["content"] += " " + date
+        vision_dict[user_id] = {"conversation": default_persona_copy, "persona": "default", "timestamp": timestamp}
+    vision_dict[user_id]["timestamp"] = timestamp
+    print(vision_dict[user_id])
+
+    conversation = vision_dict[user_id]["conversation"]
+
+    if message.content and message.attachments:
+        image_url = message.attachments[0].url
+        conversation.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": message.content},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image_url},
+                },
+            ],
+        })
+    elif message.content:
+        conversation.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": message.content},
+            ],
+        })
+
+    elif message.attachments:
+        image_url = message.attachments[0].url
+        conversation.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image_url},
+                },
+            ],
+        })
+
+    response = await open_ai_client.chat.completions.create(
+        model="gpt-4-vision-preview",
+        messages=conversation,
+        max_tokens=300,
+    )
+    conversation.append({
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": response.choices[0].message.content},
+        ],
+    })
+    return response.choices[0].message.content
 
 
 @client.tree.command()
