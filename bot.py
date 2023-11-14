@@ -499,9 +499,10 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                 tool_arguments_dict = json.loads(tool_arguments_json)
 
                 if tool_name == "get_weather":
-                    lat = tool_arguments_dict["lat"]
-                    lon = tool_arguments_dict["lon"]
-                    function_data = await get_weather(lat, lon)
+                    city = tool_arguments_dict["city"]
+                    state = tool_arguments_dict["state"]
+                    country = tool_arguments_dict["country"]
+                    function_data = await get_weather(city, state, country)
 
                 if tool_name == "search_internet":
                     query = tool_arguments_dict["query"]
