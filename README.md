@@ -1,6 +1,20 @@
 # utopia
 
-**A multi-functional Discord bot with slash commands, ChatGPT with various personas, function calling utilizing both Google's CSE API and Wolfram|Alpha's Short Answers API, user specific conversations, and GPT-4 support(assuming you have a valid key).**
+**Discord bot that brings the power of GPT-4 Turbo, with capabilities including slash commanads, various personas, code interpreter, image understanding with the Vision model, and Google CSE and OpenWeatherMap API integration for function calls.**
 
 ## Installation
-Create a .env with all the keys/tokens and add the guild(s) where the bot can sync commands to, then download both files, then run [Bot](/bot.py).
+
+1. Clone the repository to your local machine or download the necessary files.
+
+2. Create a '.env' file in the root directory of the project and add your keys and tokens like this:
+```
+TOKEN=your-discord-bot-token
+OPEN_AI_KEY=your-openai-key(gpt-4 capable)
+GUILD1=your-discord-guild-id
+GUILD2=your-second-discord-guild-id
+GOOGLE_API_KEY=your-google-cse-api-key
+GOOGLE_CSE_ID=your-google-cse-id
+WEATHER_API_KEY=your-openweather-api-key
+```
+
+3. Run [Bot](/bot.py).
