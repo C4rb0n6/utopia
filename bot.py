@@ -1,9 +1,11 @@
 import datetime
 import json
 import os
+import io
 import random
 import time
 
+import aiohttp
 import asyncio
 import discord
 import requests
@@ -17,14 +19,14 @@ from botinfo import (
     newdickt,
     vision_dict,
     persona_config,
-    default_persona
+    default_persona,
+    tools
 )
 
 load_dotenv()
 
 MAX_MESSAGE_LENGTH = 2000  # 2000 characters
 message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
-global_timestamp = ""
 
 TOKEN = os.getenv('TOKEN')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
@@ -59,67 +61,40 @@ persona_dict = {
         for persona in persona_config
     }
 
+async def download_file_from_url(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                content = io.BytesIO()
+                while True:
+                    chunk = await resp.content.read(1024)
+                    if not chunk:
+                        break
+                    content.write(chunk)
+                content.seek(0)  # Reset the file-like object position to the beginning
+                return content
+
+
+async def download_openai_file(file_id):
+    file_content = await open_ai_client.files.content(file_id)
+    return file_content.content
+
 
 @client.event
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
     asyncio.create_task(clear_expired_messages(message_cooldown))
-    asyncio.create_task(timestamp())
 
 
 async def create_assistant():
     chat_model = "gpt-3.5-turbo-1106"
     assistant = await open_ai_client.beta.assistants.create(
-            name="Math Tutor",
-            instructions="You are a personal math tutor. Write and run code to answer math questions.",
-            tools=[
-                {"type": "code_interpreter"},
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "search_internet",
-                        "description": "Search the internet using Google's API. Returns top 7 search results.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "The search query"
-                                }
-                            },
-                            "required": ["query"],
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "city": {
-                                    "type": "string",
-                                    "description": "City name"
-                                },
-                                "state": {
-                                    "type": "string",
-                                    "description": "State code (only for the US, leave blank otherwise)"
-                                },
-                                "country": {
-                                    "type": "string",
-                                    "description": "Country code. Please use ISO 3166 country codes"
-                                }
-                            },
-                            "required": ["city", "state", "country"],
-                        }
-                    }
-                }
-            ],
-            model=chat_model,
-        )
+        name="Math Tutor",
+        instructions="You are a personal math tutor. Write and run code to answer math questions.",
+        tools=tools,
+        model=chat_model,
+    )
     return assistant
 
 
@@ -152,12 +127,13 @@ async def clear_expired_messages(message_cooldown):
 
 @client.event
 async def on_message(message):
+    file = None
+    timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
+    user_id = message.author.id
+
     if message.content.startswith("?8ball "):
         await eight_ball(message)
         return
-
-    timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
-    user_id = message.author.id
 
     if message.author.bot:
         return
@@ -170,6 +146,19 @@ async def on_message(message):
 
     if message.type == discord.MessageType.pins_add:
         return
+
+    if message.attachments:
+        user_files = []
+        print(message.attachments)
+        for attachment in message.attachments:
+            file_content = await download_file_from_url(attachment.url)
+
+            # Use the file_content as a file-like object
+            file = await open_ai_client.files.create(
+                file=file_content,
+                purpose='assistants'
+            )
+            user_files.append(file)
 
     if user_id not in newdickt:
         newdickt[user_id] = {"chat-model": "GPT-4 Turbo", "timestamp": timestamp}
@@ -187,18 +176,26 @@ async def on_message(message):
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
         instructions = "All your messages will be sent in discord. Keep them brief and use appropriate formatting. " + date
-        keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default", "timestamp": timestamp}
+        assistant = await create_assistant()
+        keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default", "timestamp": timestamp, "has_assistant": assistant}
     else:
+        assistant = keep_track[user_id]["has_assistant"]
         instructions = keep_track[user_id]["instructions"]
 
     async with message.channel.typing():
-        await open_ai_client.beta.threads.messages.create(
-            thread_id=keep_track[user_id]['thread'],
-            role="user",
-            content=message.content
-        )
-
-        assistant = await create_assistant()
+        if file:
+            await open_ai_client.beta.threads.messages.create(
+                thread_id=keep_track[user_id]['thread'],
+                role="user",
+                content=message.content,
+                file_ids=[file.id]
+            )
+        else:
+            await open_ai_client.beta.threads.messages.create(
+                thread_id=keep_track[user_id]['thread'],
+                role="user",
+                content=message.content,
+            )
 
         run = await open_ai_client.beta.threads.runs.create(
             thread_id=keep_track[user_id]['thread'],
@@ -207,15 +204,20 @@ async def on_message(message):
         )
 
         while run.status != "completed":
+            print(run.status)
+            print(run)
             await asyncio.sleep(1)
+
             run = await open_ai_client.beta.threads.runs.retrieve(
                 thread_id=keep_track[user_id]['thread'],
                 run_id=run.id
             )
+
             meow = []
             # Check if there are tool calls to handle
             if run.status == "requires_action":
                 tool_calls = run.required_action.submit_tool_outputs.tool_calls
+
                 for tool_call in tool_calls:
                     tool_call_id = tool_call.id
                     tool_name = tool_call.function.name
@@ -246,10 +248,58 @@ async def on_message(message):
 
         gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=keep_track[user_id]['thread'])
         print(gpt_messages)
+
+
+        # Replace your current 'for' loop that sends a text reply with the following
         for msg in gpt_messages.data:
             if msg.role == "assistant":
-                await message_reply(msg.content[0].text.value, message)
-                return
+                messagee = await open_ai_client.beta.threads.messages.retrieve(
+                    thread_id=keep_track[user_id]['thread'],
+                    message_id=msg.id
+                )
+
+                try:
+                    message_content = messagee.content[0].text
+                    annotations = message_content.annotations
+                    print(annotations)
+                except:
+                    pass
+
+                if annotations:
+
+                    for index, annotation in enumerate(annotations):
+                        file_path = getattr(annotation, 'file_path', None)
+                        if file_path:
+                            # Extract the filename from the text attribute
+                            file_name = os.path.basename(annotation.text)
+
+                            # Use the extracted filename as part of the local filename
+                            local_filename = file_name
+
+                            # Extract the file extension from the local file name
+                            file_extension = os.path.splitext(local_filename)[1]
+
+                            # Append the file extension to the local filename
+                            local_filename_with_extension = f"{local_filename}{file_extension}"
+
+                            # Extract file name and extension from the local file path
+                            file_name_with_extension = os.path.basename(local_filename_with_extension)
+                            file_name, file_extension = os.path.splitext(file_name_with_extension)
+
+                            file_content = await download_openai_file(file_path.file_id)
+
+                            if file_content:
+                                # Create an in-memory file-like object
+                                file_content_io = io.BytesIO(file_content)
+
+                                # Create a discord.File object with the in-memory file
+                                file = discord.File(file_content_io, filename=file_name)
+
+                        await message.reply(msg.content[0].text.value, file=file)
+                        return
+                else:
+                    await message.reply(msg.content[0].text.value)
+                    return
 
 
 async def message_reply(content, message):
@@ -478,7 +528,6 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     run = await open_ai_client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=assistant.id,
-
         instructions=instructions
     )
 
@@ -586,15 +635,9 @@ async def eight_ball(message):
     title = f'{message.author.name}\n:8ball: 8ball'
     description = f'Q. {question}\nA. {eight_ball_message}'
     embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
-    embed.set_footer(text=global_timestamp)
+    embed.set_footer(text=datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p'))
     channel = message.channel
     await channel.send(embed=embed)
-
-async def timestamp():
-    global global_timestamp
-    while True:
-        global_timestamp = datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p')
-        await asyncio.sleep(10)
 
 
 @client.tree.command()
