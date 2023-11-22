@@ -71,7 +71,7 @@ async def download_file_from_url(url):
                     if not chunk:
                         break
                     content.write(chunk)
-                content.seek(0)  # Reset the file-like object position to the beginning
+                content.seek(0)
                 return content
 
 
@@ -87,11 +87,16 @@ async def on_ready():
     asyncio.create_task(clear_expired_messages(message_cooldown))
 
 
-async def create_assistant():
-    chat_model = "gpt-3.5-turbo-1106"
+async def create_assistant(gpt_version="GPT-3.5 Turbo"):
+    chat_model = None
+    if gpt_version == "GPT-4 Turbo":
+        chat_model = "gpt-4-1106-preview"
+    elif gpt_version == "GPT-3.5 Turbo":
+        chat_model = "gpt-3.5-turbo-1106"
+
     assistant = await open_ai_client.beta.assistants.create(
-        name="Math Tutor",
-        instructions="You are a personal math tutor. Write and run code to answer math questions.",
+        name="Math tutor",
+        instructions="You are a helpful math tutor.",
         tools=tools,
         model=chat_model,
     )
@@ -127,6 +132,7 @@ async def clear_expired_messages(message_cooldown):
 
 @client.event
 async def on_message(message):
+    assistant = None
     file = None
     timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
     user_id = message.author.id
@@ -161,7 +167,7 @@ async def on_message(message):
             user_files.append(file)
 
     if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": "GPT-4 Turbo", "timestamp": timestamp}
+        newdickt[user_id] = {"chat-model": "GPT-3.5 Turbo", "timestamp": timestamp}
     elif user_id in newdickt:
         chat_model = newdickt[user_id]["chat-model"]
         if chat_model == "GPT-4 Vision":
@@ -175,12 +181,34 @@ async def on_message(message):
         thread = await create_thread()
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        instructions = "All your messages will be sent in discord. Keep them brief and use appropriate formatting. " + date
-        assistant = await create_assistant()
+        instructions = "All your messages will be sent in discord, use appropriate formatting. " + date
+        chat_model = newdickt[user_id]["chat-model"]
+        if chat_model == "GPT-3.5 Turbo":
+            assistant = await create_assistant()
+        elif chat_model == "GPT-4 Turbo":
+            assistant = await create_assistant(chat_model)
         keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default", "timestamp": timestamp, "has_assistant": assistant}
     else:
-        assistant = keep_track[user_id]["has_assistant"]
+        try:
+            assistant = keep_track[user_id]["has_assistant"]
+        except:
+            keep_track[user_id]["has_assistant"] = await create_assistant()
+            assistant = keep_track[user_id]["has_assistant"]
         instructions = keep_track[user_id]["instructions"]
+        chat_model = newdickt[user_id]["chat-model"]
+
+        current_model_mapping = {
+            "gpt-3.5-turbo-1106": "GPT-3.5 Turbo",
+            "gpt-4-1106-preview": "GPT-4 Turbo",
+        }
+
+        current_model = current_model_mapping.get(assistant.model, assistant.model)
+
+        if chat_model != current_model:
+            thread = await create_thread()
+            assistant = await create_assistant(chat_model)
+            keep_track[user_id]["thread"] = thread.id
+            keep_track[user_id]["has_assistant"] = assistant
 
     async with message.channel.typing():
         if file:
@@ -204,6 +232,10 @@ async def on_message(message):
         )
 
         while run.status != "completed":
+            if run.status == "failed":
+                print("failed")
+                await message.reply("shit broke idk, ask a better question loser")
+                return
             print(run.status)
             print(run)
             await asyncio.sleep(1)
@@ -217,6 +249,7 @@ async def on_message(message):
             # Check if there are tool calls to handle
             if run.status == "requires_action":
                 tool_calls = run.required_action.submit_tool_outputs.tool_calls
+                function_data = None
 
                 for tool_call in tool_calls:
                     tool_call_id = tool_call.id
@@ -252,6 +285,9 @@ async def on_message(message):
 
         # Replace your current 'for' loop that sends a text reply with the following
         for msg in gpt_messages.data:
+            print(msg)
+            print(f"131 {gpt_messages.data} 13132ur")
+            print(f"554 {gpt_messages} eiowriowur")
             if msg.role == "assistant":
                 messagee = await open_ai_client.beta.threads.messages.retrieve(
                     thread_id=keep_track[user_id]['thread'],
@@ -259,11 +295,14 @@ async def on_message(message):
                 )
 
                 try:
+                    file_id = None
                     message_content = messagee.content[0].text
                     annotations = message_content.annotations
                     print(annotations)
                 except:
-                    pass
+                    file_id = messagee.content[0].image_file.file_id
+                    annotations = None
+                    print("no annotations")
 
                 if annotations:
 
@@ -297,8 +336,24 @@ async def on_message(message):
 
                         await message.reply(msg.content[0].text.value, file=file)
                         return
+                elif file_id:
+                    file_content = await download_openai_file(file_id)
+
+                    if file_content:
+                        # Create an in-memory file-like object
+                        file_content_io = io.BytesIO(file_content)
+
+                        # Create a discord.File object with the in-memory file
+                        file = discord.File(file_content_io, filename="model_uploaded_file.png")
+
+                        if msg.content[1].text.value:
+                            await message.reply(msg.content[1].text.value, file=file)
+                            return
+                        else:
+                            await message.reply(file=file)
+                            return
                 else:
-                    await message.reply(msg.content[0].text.value)
+                    await message_reply(msg.content[0].text.value, message)
                     return
 
 
@@ -456,17 +511,19 @@ async def get_weather(city, state, country):
 @app_commands.choices(option=[
     app_commands.Choice(name="GPT-4 Turbo", value="1"),
     app_commands.Choice(name="GPT-4 Vision", value="2"),
+    app_commands.Choice(name="GPT-3.5 Turbo", value="3"),
 ])
 async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
     """
         Choose a model
 
     """
+    timestamp = time.time()
     user_id = interaction.user.id
     selected_model = option.name
 
     if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": option.name}
+        newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
     else:
         chat_model = newdickt[user_id]["chat-model"]
@@ -523,7 +580,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         content=message_str
     )
 
-    assistant = await create_assistant()
+    assistant = await create_assistant("GPT-4 Turbo")
 
     run = await open_ai_client.beta.threads.runs.create(
         thread_id=thread.id,
@@ -532,6 +589,10 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     )
 
     while run.status != "completed":
+        if run.status == "failed":
+            print("failed")
+            await interaction.followup.send("shit broke idk, ask a better question loser")
+            return
         await asyncio.sleep(1)
         run = await open_ai_client.beta.threads.runs.retrieve(
             thread_id=thread.id,
@@ -611,7 +672,6 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
             # Update the user's conversation and persona in the keep_track dictionary
             user_id = interaction.user.id
             thread = await create_thread()
-            print(persona_dict)
             keep_track[user_id] = {"thread": thread.id, "instructions": persona[0]["content"], "persona": current_persona, "timestamp": timestamp}
             await interaction.followup.send(f"Persona changed to **{current_persona}**.")
             return
