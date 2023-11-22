@@ -644,14 +644,12 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
 @app_commands.choices(option=[
     app_commands.Choice(name="Current Persona", value="1"),
     app_commands.Choice(name="Republican", value="2"),
-    app_commands.Choice(name="Chef", value="3"),
     app_commands.Choice(name="Math", value="4"),
     app_commands.Choice(name="Code", value="5"),
     app_commands.Choice(name="Ego", value="9"),
     app_commands.Choice(name="Fitness Trainer", value="12"),
     app_commands.Choice(name="Gordon Ramsay", value="13"),
     app_commands.Choice(name="DAN", value="14"),
-    app_commands.Choice(name="Prompt", value="17"),
     app_commands.Choice(name="Default", value="16"),
 ])
 async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
