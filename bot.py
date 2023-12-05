@@ -1,38 +1,42 @@
 import datetime
 import json
 import os
-import io
-import random
 import time
 
-import aiohttp
 import asyncio
 import discord
-import requests
+
 from discord import app_commands
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 from botinfo import (
-    eight_ball_list,
     keep_track,
+    persona_dict,
     newdickt,
-    vision_dict,
-    persona_config,
-    default_persona,
-    tools
+    help_instructions,
+)
+
+from functions import(
+    clear_expired_messages,
+    eight_ball,
+    assistant_response,
+    format_response,
+    download_file_from_url,
+    create_thread,
+    create_assistant,
+    get_weather,
+    get_default_persona,
+    get_vision,
+    search,
 )
 
 load_dotenv()
 
-MAX_MESSAGE_LENGTH = 2000  # 2000 characters
-message_cooldown = 900  # time to clear keep_safe dict (15 minutes in seconds)
+message_cooldown = 1200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
 
 TOKEN = os.getenv('TOKEN')
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
-weather_api_key = os.getenv('WEATHER_API_KEY')
-vanc_key = os.getenv('VANC_KEY')  # gpt4 key
+vanc_key = os.getenv('VANC_KEY')
 GUILD1 = os.getenv("GUILD1")
 GUILD2 = os.getenv("GUILD2")
 GUILD_ID = [GUILD1, GUILD2]
@@ -53,31 +57,7 @@ class MyClient(discord.Client):
 
 intents = discord.Intents().all()
 client = MyClient(intents=intents)
-
 open_ai_client = AsyncOpenAI(api_key=vanc_key)
-
-persona_dict = {
-        persona["role"]: {"name": persona["role"], "persona": [persona], "value": persona["value"]}
-        for persona in persona_config
-    }
-
-async def download_file_from_url(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                content = io.BytesIO()
-                while True:
-                    chunk = await resp.content.read(1024)
-                    if not chunk:
-                        break
-                    content.write(chunk)
-                content.seek(0)
-                return content
-
-
-async def download_openai_file(file_id):
-    file_content = await open_ai_client.files.content(file_id)
-    return file_content.content
 
 
 @client.event
@@ -86,56 +66,11 @@ async def on_ready():
     print('------')
     asyncio.create_task(clear_expired_messages(message_cooldown))
 
-
-async def create_assistant(gpt_version="GPT-3.5 Turbo"):
-    chat_model = None
-    if gpt_version == "GPT-4 Turbo":
-        chat_model = "gpt-4-1106-preview"
-    elif gpt_version == "GPT-3.5 Turbo":
-        chat_model = "gpt-3.5-turbo-1106"
-
-    assistant = await open_ai_client.beta.assistants.create(
-        name="Math tutor",
-        instructions="You are a helpful math tutor.",
-        tools=tools,
-        model=chat_model,
-    )
-    return assistant
-
-
-async def create_thread():
-    return await open_ai_client.beta.threads.create()
-
-
-# Define a coroutine to periodically check and remove expired messages
-async def clear_expired_messages(message_cooldown):
-    while True:
-        current_time = time.time()
-
-        for user_id in keep_track.copy():
-            timestamp = keep_track[user_id]["timestamp"]
-            if current_time - timestamp > message_cooldown:
-                del keep_track[user_id]
-
-        for user_id in newdickt.copy():
-            timestamp = newdickt[user_id]["timestamp"]
-            if current_time - timestamp > message_cooldown:
-                del newdickt[user_id]
-
-        for user_id in vision_dict.copy():
-            timestamp = vision_dict[user_id]["timestamp"]
-            if current_time - timestamp > message_cooldown:
-                del vision_dict[user_id]
-
-        await asyncio.sleep(30)
-
-
 @client.event
 async def on_message(message):
-    assistant = None
-    file = None
-    timestamp = time.time()  # Timestamp for keeping track of how long users are kept in keep_track
+    user_files = None
     user_id = message.author.id
+    timestamp = time.time()
 
     if message.content.startswith("?8ball "):
         await eight_ball(message)
@@ -153,386 +88,67 @@ async def on_message(message):
     if message.type == discord.MessageType.pins_add:
         return
 
-    if message.attachments:
-        user_files = []
-        print(message.attachments)
-        for attachment in message.attachments:
-            file_content = await download_file_from_url(attachment.url)
-
-            # Use the file_content as a file-like object
-            file = await open_ai_client.files.create(
-                file=file_content,
-                purpose='assistants'
-            )
-            user_files.append(file)
-
-    if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": "GPT-3.5 Turbo", "timestamp": timestamp}
-    elif user_id in newdickt:
-        chat_model = newdickt[user_id]["chat-model"]
-        if chat_model == "GPT-4 Vision":
-            print("meow")
-            async with message.channel.typing():
-                response = await get_vision(message)
-                await message_reply(response, message)
-                return
-
-    if user_id not in keep_track:
-        thread = await create_thread()
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        instructions = "All your messages will be sent in discord, use appropriate formatting. " + date
-        chat_model = newdickt[user_id]["chat-model"]
-        if chat_model == "GPT-3.5 Turbo":
-            assistant = await create_assistant()
-        elif chat_model == "GPT-4 Turbo":
-            assistant = await create_assistant(chat_model)
-        keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default", "timestamp": timestamp, "has_assistant": assistant}
-    else:
-        try:
-            assistant = keep_track[user_id]["has_assistant"]
-        except:
-            keep_track[user_id]["has_assistant"] = await create_assistant()
-            assistant = keep_track[user_id]["has_assistant"]
-        instructions = keep_track[user_id]["instructions"]
-        chat_model = newdickt[user_id]["chat-model"]
-
-        current_model_mapping = {
-            "gpt-3.5-turbo-1106": "GPT-3.5 Turbo",
-            "gpt-4-1106-preview": "GPT-4 Turbo",
-        }
-
-        current_model = current_model_mapping.get(assistant.model, assistant.model)
-
-        if chat_model != current_model:
-            thread = await create_thread()
-            assistant = await create_assistant(chat_model)
-            keep_track[user_id]["thread"] = thread.id
-            keep_track[user_id]["has_assistant"] = assistant
-
     async with message.channel.typing():
-        if file:
-            await open_ai_client.beta.threads.messages.create(
-                thread_id=keep_track[user_id]['thread'],
-                role="user",
-                content=message.content,
-                file_ids=[file.id]
-            )
+        if message.attachments:
+            user_files = []
+            print(message.attachments)
+            for attachment in message.attachments:
+                file_content = await download_file_from_url(attachment.url)
+                file = await open_ai_client.files.create(file=file_content, purpose='assistants')
+                user_files.append(file.id)
+            print(user_files)
+
+        if user_id not in newdickt:
+            newdickt[user_id] = {"chat-model": "GPT-3.5 Turbo", "timestamp": timestamp}
         else:
-            await open_ai_client.beta.threads.messages.create(
-                thread_id=keep_track[user_id]['thread'],
-                role="user",
-                content=message.content,
-            )
-
-        run = await open_ai_client.beta.threads.runs.create(
-            thread_id=keep_track[user_id]['thread'],
-            assistant_id=assistant.id,
-            instructions=instructions
-        )
-
-        while run.status != "completed":
-            if run.status == "failed":
-                print("failed")
-                await message.reply("shit broke idk, ask a better question loser")
-                return
-            print(run.status)
-            print(run)
-            await asyncio.sleep(1)
-
-            run = await open_ai_client.beta.threads.runs.retrieve(
-                thread_id=keep_track[user_id]['thread'],
-                run_id=run.id
-            )
-
-            meow = []
-            # Check if there are tool calls to handle
-            if run.status == "requires_action":
-                tool_calls = run.required_action.submit_tool_outputs.tool_calls
-                function_data = None
-
-                for tool_call in tool_calls:
-                    tool_call_id = tool_call.id
-                    tool_name = tool_call.function.name
-                    tool_arguments_json = tool_call.function.arguments
-                    tool_arguments_dict = json.loads(tool_arguments_json)
-
-                    if tool_name == "get_weather":
-                        city = tool_arguments_dict["city"]
-                        state = tool_arguments_dict["state"]
-                        country = tool_arguments_dict["country"]
-                        function_data = await get_weather(city, state, country)
-
-                    if tool_name == "search_internet":
-                        query = tool_arguments_dict["query"]
-                        function_data = await search(query)
-
-                    meow.append({
-                        "tool_call_id": tool_call_id,
-                        "output": function_data
-                    })  # Append the tool output to the list
-
-                # Submit all tool outputs after processing all tool calls
-                await open_ai_client.beta.threads.runs.submit_tool_outputs(
-                    thread_id=keep_track[user_id]['thread'],
-                    run_id=run.id,
-                    tool_outputs=meow
-                )
-
-        gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=keep_track[user_id]['thread'])
-        print(gpt_messages)
-
-
-        # Replace your current 'for' loop that sends a text reply with the following
-        for msg in gpt_messages.data:
-            print(msg)
-            print(f"131 {gpt_messages.data} 13132ur")
-            print(f"554 {gpt_messages} eiowriowur")
-            if msg.role == "assistant":
-                messagee = await open_ai_client.beta.threads.messages.retrieve(
-                    thread_id=keep_track[user_id]['thread'],
-                    message_id=msg.id
-                )
-
-                try:
-                    file_id = None
-                    message_content = messagee.content[0].text
-                    annotations = message_content.annotations
-                    print(annotations)
-                except:
-                    file_id = messagee.content[0].image_file.file_id
-                    annotations = None
-                    print("no annotations")
-
-                if annotations:
-
-                    for index, annotation in enumerate(annotations):
-                        file_path = getattr(annotation, 'file_path', None)
-                        if file_path:
-                            # Extract the filename from the text attribute
-                            file_name = os.path.basename(annotation.text)
-
-                            # Use the extracted filename as part of the local filename
-                            local_filename = file_name
-
-                            # Extract the file extension from the local file name
-                            file_extension = os.path.splitext(local_filename)[1]
-
-                            # Append the file extension to the local filename
-                            local_filename_with_extension = f"{local_filename}{file_extension}"
-
-                            # Extract file name and extension from the local file path
-                            file_name_with_extension = os.path.basename(local_filename_with_extension)
-                            file_name, file_extension = os.path.splitext(file_name_with_extension)
-
-                            file_content = await download_openai_file(file_path.file_id)
-
-                            if file_content:
-                                # Create an in-memory file-like object
-                                file_content_io = io.BytesIO(file_content)
-
-                                # Create a discord.File object with the in-memory file
-                                file = discord.File(file_content_io, filename=file_name)
-
-                        await message.reply(msg.content[0].text.value, file=file)
-                        return
-                elif file_id:
-                    file_content = await download_openai_file(file_id)
-
-                    if file_content:
-                        # Create an in-memory file-like object
-                        file_content_io = io.BytesIO(file_content)
-
-                        # Create a discord.File object with the in-memory file
-                        file = discord.File(file_content_io, filename="model_uploaded_file.png")
-
-                        if msg.content[1].text.value:
-                            await message.reply(msg.content[1].text.value, file=file)
-                            return
-                        else:
-                            await message.reply(file=file)
-                            return
-                else:
-                    await message_reply(msg.content[0].text.value, message)
+            newdickt[user_id]["timestamp"] = timestamp
+            chat_model = newdickt[user_id]["chat-model"]
+            if chat_model == "GPT-4 Vision":
+                print("meow")
+                async with message.channel.typing():
+                    await get_vision(message)
                     return
 
-
-async def message_reply(content, message):
-    if len(content) <= MAX_MESSAGE_LENGTH:
-        await message.reply(content)
-    else:
-        chunks = [content[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(content), MAX_MESSAGE_LENGTH)]
-        await message.reply(chunks[0])  # Reply with the first chunk
-        for chunk in chunks[1:]:
-            await message.channel.send(chunk)  # Send subsequent chunks as regular messages
-
-    return
-
-
-async def get_vision(message):
-    timestamp = time.time()
-    user_id = message.author.id
-    # Check if the user already has a conversation, if not, create a new one
-    if user_id not in vision_dict:
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        default_persona_copy = [person.copy() for person in default_persona]  # Create "deep copy"
-        default_persona_copy[0]["content"] += " " + date
-        vision_dict[user_id] = {"conversation": default_persona_copy, "persona": "default", "timestamp": timestamp}
-    vision_dict[user_id]["timestamp"] = timestamp
-    print(vision_dict[user_id])
-
-    conversation = vision_dict[user_id]["conversation"]
-
-    if message.content and message.attachments:
-        image_url = message.attachments[0].url
-        conversation.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": message.content},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image_url},
-                },
-            ],
-        })
-    elif message.content:
-        conversation.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": message.content},
-            ],
-        })
-
-    elif message.attachments:
-        image_url = message.attachments[0].url
-        conversation.append({
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image_url},
-                },
-            ],
-        })
-
-    response = await open_ai_client.chat.completions.create(
-        model="gpt-4-vision-preview",
-        messages=conversation,
-        max_tokens=300,
-    )
-    conversation.append({
-        "role": "assistant",
-        "content": [
-            {"type": "text", "text": response.choices[0].message.content},
-        ],
-    })
-    return response.choices[0].message.content
-
-
-async def search(query):
-    print("Google Query:", query)
-    num = 3  # Number of results to return
-    url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={query}&num={num}"
-    data = requests.get(url).json()
-
-    search_items = data.get("items")
-    print(search_items)
-    results = []
-    if search_items is not None:
-        for i, search_item in enumerate(search_items, start=1):
-            title = search_item.get("title", "N/A")
-            snippet = search_item.get("snippet", "N/A")
-            long_description = search_item.get("pagemap", {}).get("metatags", [{}])[0].get("og:description", "N/A")
-            link = search_item.get("link", "N/A")
-
-            result_str = f"Result {i}: {title}\n"
-
-            if long_description != "N/A":
-                result_str += f"Description {long_description}\n"
-            else:
-                result_str += f"Snippet {snippet}\n"
-
-            result_str += f"URL {link}\n"
-
-            results.append(result_str)
-    else:
-        return "No search results found"
-
-    output = "\n".join(results)
-    print("Google Response:", output)
-    return output
-
-
-async def get_weather(city, state, country):
-    print(city, state, country)
-    # Create the API URL with latitude and longitude parameters
-    url = f'http://api.openweathermap.org/geo/1.0/direct?q={city},{state},{country}&limit=3&appid={weather_api_key}'
-
-    # Send a GET request to the API
-    response = requests.get(url)
-
-    # Check if the request was successful (status code 200)
-    if response.status_code == 200:
-        # Parse the JSON data in the response
-        data = response.json()
-        print(data)
-        if data:
-            first_item = data[0]
+        if user_id not in keep_track:
+            thread = await create_thread()
+            instructions = await get_default_persona()
+            print(instructions)
+            chat_model = newdickt[user_id]["chat-model"]
+            assistant = await create_assistant(chat_model)
+            keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default",
+                                   "timestamp": timestamp, "has_assistant": assistant}
         else:
-            return "No data found"
+            try:
+                assistant = keep_track[user_id]["has_assistant"]
+            except KeyError:
+                keep_track[user_id]["has_assistant"] = await create_assistant()
+                assistant = keep_track[user_id]["has_assistant"]
+            instructions = keep_track[user_id]["instructions"]
+            print(instructions)
+            chat_model = newdickt[user_id]["chat-model"]
+            keep_track[user_id]["timestamp"] = timestamp
 
-        # Extract latitude and longitude from the first item
-        lat = first_item["lat"]
-        lon = first_item["lon"]
-        print(lat, lon)
-        print(lat,lon)
+            current_model_mapping = {
+                "gpt-3.5-turbo-1106": "GPT-3.5 Turbo",
+                "gpt-4-1106-preview": "GPT-4 Turbo",
+            }
 
-        url = f'http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={weather_api_key}&units=imperial'
+            current_model = current_model_mapping.get(assistant.model, assistant.model)
 
-        # Send a GET request to the API
-        real_response = requests.get(url)
+            if chat_model != current_model:
+                thread = await create_thread()
+                assistant = await create_assistant(chat_model)
+                keep_track[user_id]["thread"] = thread.id
+                keep_track[user_id]["has_assistant"] = assistant
 
-        data = real_response.json()
-
-        # Extract the relevant information from the JSON response
-        temperature = data['main']['temp']
-        weather_description = data['weather'][0]['description']
-
-        # Return the weather information as a dictionary
-        return f"{temperature} F, {weather_description}"
-    else:
-        # Return an error message if the request was not successful
-        return {'error': f'Unable to retrieve weather data. Status code: {response.status_code}'}
-
-
-@client.tree.command(name='model')
-@app_commands.describe(option="Which to choose..")
-@app_commands.choices(option=[
-    app_commands.Choice(name="GPT-4 Turbo", value="1"),
-    app_commands.Choice(name="GPT-4 Vision", value="2"),
-    app_commands.Choice(name="GPT-3.5 Turbo", value="3"),
-])
-async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
-    """
-        Choose a model
-
-    """
-    timestamp = time.time()
-    user_id = interaction.user.id
-    selected_model = option.name
-
-    if user_id not in newdickt:
-        newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
-        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-    else:
-        chat_model = newdickt[user_id]["chat-model"]
-
-        if chat_model == selected_model:
-            await interaction.response.send_message(f"**{selected_model}** is already selected.")
+        if user_files:
+            await assistant_response(message, instructions, user_files)
         else:
-            newdickt[user_id]["chat-model"] = selected_model
-            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+            await assistant_response(message, instructions)
+
+        await format_response(message)
+        return
+
 
 @client.tree.command(name='gpt')
 @app_commands.describe(persona="Which persona to choose..")
@@ -590,18 +206,23 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
 
     while run.status != "completed":
         if run.status == "failed":
+            print(run.last_error)
             print("failed")
             await interaction.followup.send("shit broke idk, ask a better question loser")
             return
-        await asyncio.sleep(1)
+        print(run.status)
+        await asyncio.sleep(0.5)
+
         run = await open_ai_client.beta.threads.runs.retrieve(
             thread_id=thread.id,
             run_id=run.id
         )
-        meow = []
-        # Check if there are tool calls to handle
+
+        tool_call_list = []
         if run.status == "requires_action":
             tool_calls = run.required_action.submit_tool_outputs.tool_calls
+            function_data = None
+
             for tool_call in tool_calls:
                 tool_call_id = tool_call.id
                 tool_name = tool_call.function.name
@@ -618,26 +239,57 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                     query = tool_arguments_dict["query"]
                     function_data = await search(query)
 
-                meow.append({
+                if function_data is None:
+                    function_data = "No data found."
+
+                tool_call_list.append({
                     "tool_call_id": tool_call_id,
                     "output": function_data
-                })  # Append the tool output to the list
+                })
 
-            # Submit all tool outputs after processing all tool calls
             await open_ai_client.beta.threads.runs.submit_tool_outputs(
                 thread_id=thread.id,
                 run_id=run.id,
-                tool_outputs=meow
+                tool_outputs=tool_call_list
             )
 
     gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=thread.id)
     print(gpt_messages)
-    # Check all messages returned for the assistant role
     for msg in gpt_messages.data:
         if msg.role == "assistant":
             await interaction.followup.send(
                 content=f'***{interaction.user.mention} - {message_str}***\n\n{msg.content[0].text.value}')
             return
+
+
+@client.tree.command(name='model')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+    app_commands.Choice(name="GPT-4 Turbo", value="1"),
+    app_commands.Choice(name="GPT-4 Vision", value="2"),
+    app_commands.Choice(name="GPT-3.5 Turbo", value="3"),
+])
+async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    """
+        Choose a model
+
+    """
+    timestamp = time.time()
+    user_id = interaction.user.id
+    selected_model = option.name
+
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
+        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+    else:
+        chat_model = newdickt[user_id]["chat-model"]
+
+        if chat_model == selected_model:
+            await interaction.response.send_message(f"**{selected_model}** is already selected.")
+        else:
+            newdickt[user_id]["chat-model"] = selected_model
+            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+
 
 @client.tree.command(name='personas')
 @app_commands.describe(option="Which to choose..")
@@ -687,15 +339,11 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         return
 
 
-async def eight_ball(message):
-    eight_ball_message = random.choice(eight_ball_list)
-    question = message.content[7:]
-    title = f'{message.author.name}\n:8ball: 8ball'
-    description = f'Q. {question}\nA. {eight_ball_message}'
-    embed = discord.Embed(title=title, description=description, color=discord.Color.dark_teal())
-    embed.set_footer(text=datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p'))
-    channel = message.channel
-    await channel.send(embed=embed)
+@client.tree.command()
+async def help(interaction: discord.Interaction):
+    """Returns list of commands"""
+    await interaction.response.defer()
+    await interaction.followup.send(f"{help_instructions}")
 
 
 @client.tree.command()
