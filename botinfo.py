@@ -95,7 +95,7 @@ tools = [
 
 help_instructions = f"""
 # Using the "!" Prefix:
-- Adding the "!" prefix before messages will instruct the bot to ignore those messages in the <#1136666582790197260> channel.
+- Adding the "!" prefix before messages will instruct the bot to ignore those messages in the #chat-gpt channel.
 
 ## Commands:
 - **?8ball**
@@ -115,7 +115,7 @@ help_instructions = f"""
   - /personas [persona_name] (e.g. /personas DAN)
 
 - **/gpt**
-  - Simplified version of the standard implementation in the <#1136666582790197260> channel.
+  - Simplified version of the standard implementation in the #chat-gpt channel.
   - /gpt [message]
   - Optionally you can add a persona parameter to the gpt command to specify the bot's personality. For example: /gpt [message] --[persona_name]
 """
