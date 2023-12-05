@@ -254,11 +254,14 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
             )
 
     gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=thread.id)
-    print(gpt_messages)
     for msg in gpt_messages.data:
         if msg.role == "assistant":
-            await interaction.followup.send(
-                content=f'***{interaction.user.mention} - {message_str}***\n\n{msg.content[0].text.value}')
+            try:
+                await interaction.followup.send(
+                    content=f'***{interaction.user.mention} - {message_str}***\n\n{msg.content[0].text.value}')
+            except:
+                await interaction.followup.send(
+                    content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
             return
 
 
