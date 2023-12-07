@@ -186,9 +186,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                 instructions = selected_persona[0]["content"]
                 break
     else:
-        current_date = datetime.datetime.now(datetime.timezone.utc)
-        date = f"This is real-time data: {current_date}, use it wisely to find better solutions."
-        instructions = "All your messages will be sent in discord. Keep them brief and use appropriate formatting. " + date
+        instructions = await get_default_persona()
 
     await open_ai_client.beta.threads.messages.create(
         thread_id=thread.id,
@@ -206,6 +204,11 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
 
     while run.status != "completed":
         if run.status == "failed":
+            print(run.last_error)
+            print("failed")
+            await interaction.followup.send("shit broke idk, ask a better question loser")
+            return
+        if run.status == "expired":
             print(run.last_error)
             print("failed")
             await interaction.followup.send("shit broke idk, ask a better question loser")

@@ -61,6 +61,11 @@ async def assistant_response(message, instructions, files=None):
             print("failed")
             await message.reply("shit broke idk, ask a better question loser")
             return
+        if run.status == "expired":
+            print(run.last_error)
+            print("failed")
+            await message.reply("shit broke idk, ask a better question loser")
+            return
         print(run.status)
         await asyncio.sleep(0.5)
 
@@ -161,17 +166,16 @@ async def format_response(message):
                 await message_reply(msg.content[0].text.value, message)
                 return
 
-
+conversation = []
 async def get_vision(message):
     timestamp = time.time()
     user_id = message.author.id
     # Check if the user already has a conversation, if not, create a new one
     if user_id not in vision_dict:
         instructions = await get_default_persona()
+        instructions = [{"role": "system", "content": [{"type": "text", "text": instructions}]}]
         vision_dict[user_id] = {"conversation": instructions, "persona": "default", "timestamp": timestamp}
     vision_dict[user_id]["timestamp"] = timestamp
-    print(vision_dict[user_id])
-
     conversation = vision_dict[user_id]["conversation"]
 
     if message.content and message.attachments:
@@ -218,7 +222,7 @@ async def get_vision(message):
         ],
     })
 
-    await message_reply(response, message)
+    await message_reply(response.choices[0].message.content, message)
     return
 
 async def get_default_persona():
