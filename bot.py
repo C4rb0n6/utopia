@@ -360,7 +360,7 @@ async def help(interaction: discord.Interaction):
 **/personas [persona_name]**: Change bot personality (e.g., `/personas DAN`).
 **/gpt [message] [--persona_name]**: Simplified chat with optional persona.
 
-- Prefix messages with "!" to instruct the bot in {channel_link}
+- Adding the "!" prefix before messages will instruct the bot to ignore those messages in {channel_link}
 """
 
         await interaction.followup.send(content=instructions)
