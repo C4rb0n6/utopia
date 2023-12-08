@@ -348,6 +348,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
 @client.tree.command()
 async def help(interaction: discord.Interaction):
     """Returns list of commands"""
+    await interaction.response.defer()
     chat_gpt_channel = discord.utils.get(interaction.guild.channels, name="chat-gpt")
     if chat_gpt_channel:
         channel_link = f'https://discord.com/channels/{interaction.guild.id}/{chat_gpt_channel.id}'
@@ -378,9 +379,9 @@ async def help(interaction: discord.Interaction):
   - Optionally, you can add a persona parameter to the gpt command to specify the bot's personality. For example: /gpt [message] --[persona_name]
 """
 
-        await interaction.followup.send(content=instructions, ephemeral=True)
+        await interaction.followup.send(content=instructions)
     else:
-        await interaction.followup.send(content=help_instructions, ephemeral=True)
+        await interaction.followup.send(content=help_instructions)
 
 
 @client.tree.command()
