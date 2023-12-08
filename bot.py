@@ -349,7 +349,39 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
 async def help(interaction: discord.Interaction):
     """Returns list of commands"""
     await interaction.response.defer()
-    await interaction.followup.send(f"{help_instructions}")
+    chat_gpt_channel = discord.utils.get(interaction.guild.channels, name="chat-gpt")
+    if chat_gpt_channel:
+        channel_link = f'https://discord.com/channels/{interaction.guild.id}/{chat_gpt_channel.id}'
+        instructions = f"""
+                # Using the "!" Prefix:
+                - Adding the "!" prefix before messages will instruct the bot to ignore those messages in {channel_link}
+
+                ## Commands:
+                - **?8ball**
+                  - The bot replies with one of the classic 8-ball messages.
+                  - Simply type ?8ball in the chat and send a message.
+
+                - **/ping**
+                  - Returns the latency of the bot.
+                  - Type /ping in the chat.
+
+                - **/model**
+                  - Allows you to switch between different chat models.
+                  - /model [model_name] (e.g. /model GPT-4 Turbo)
+
+                - **/personas**
+                  - Allows you to change the personality of the bot.
+                  - /personas [persona_name] (e.g. /personas DAN)
+
+                - **/gpt**
+                  - Simplified version of the standard implementation in {channel_link}
+                  - /gpt [message]
+                  - Optionally you can add a persona parameter to the gpt command to specify the bot's personality. For example: /gpt [message] --[persona_name]
+                """
+
+        await interaction.followup.send(content=instructions, ephemeral=True)
+    else:
+        await interaction.followup.send(content=help_instructions, ephemeral=True)
 
 
 @client.tree.command()
