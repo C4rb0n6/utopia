@@ -111,7 +111,7 @@ async def on_message(message):
 
         if user_id not in keep_track:
             thread = await create_thread()
-            instructions = await get_default_persona()
+            instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
             print(instructions)
             chat_model = newdickt[user_id]["chat-model"]
             assistant = await create_assistant(chat_model)
@@ -194,7 +194,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         content=message_str
     )
 
-    assistant = await create_assistant("GPT-4 Turbo")
+    assistant = await create_assistant()
 
     run = await open_ai_client.beta.threads.runs.create(
         thread_id=thread.id,
@@ -202,6 +202,8 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         instructions=instructions
     )
 
+
+    print("before loop")
     while run.status != "completed":
         if run.status == "failed":
             print(run.last_error)
@@ -210,11 +212,12 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
             return
         if run.status == "expired":
             print(run.last_error)
-            print("failed")
+            print("expired")
             await interaction.followup.send("shit broke idk, ask a better question loser")
             return
         print(run.status)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(4)
+        print("after sleep")
 
         run = await open_ai_client.beta.threads.runs.retrieve(
             thread_id=thread.id,
@@ -255,8 +258,12 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
                 run_id=run.id,
                 tool_outputs=tool_call_list
             )
+    print(run.status)
+    print("after loop")
+
 
     gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=thread.id)
+    print(gpt_messages)
     for msg in gpt_messages.data:
         if msg.role == "assistant":
             try:
