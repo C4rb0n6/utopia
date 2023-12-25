@@ -1,7 +1,6 @@
-import datetime
-import json
 import os
 import time
+import datetime
 
 import asyncio
 import discord
@@ -25,10 +24,9 @@ from functions import(
     download_file_from_url,
     create_thread,
     create_assistant,
-    get_weather,
+    get_gpt_response,
     get_default_persona,
     get_vision,
-    search,
 )
 
 load_dotenv()
@@ -111,12 +109,12 @@ async def on_message(message):
 
         if user_id not in keep_track:
             thread = await create_thread()
-            instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
-            print(instructions)
             chat_model = newdickt[user_id]["chat-model"]
+            instructions = await get_default_persona(chat_model)
             assistant = await create_assistant(chat_model)
             keep_track[user_id] = {"thread": thread.id, "instructions": instructions, "persona": "Default",
                                    "timestamp": timestamp, "has_assistant": assistant}
+            print(keep_track[user_id])
         else:
             try:
                 assistant = keep_track[user_id]["has_assistant"]
@@ -124,8 +122,10 @@ async def on_message(message):
                 keep_track[user_id]["has_assistant"] = await create_assistant()
                 assistant = keep_track[user_id]["has_assistant"]
             instructions = keep_track[user_id]["instructions"]
-            print(instructions)
             chat_model = newdickt[user_id]["chat-model"]
+            if chat_model == "GPT-4 Turbo":
+                instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
+            print(instructions)
             keep_track[user_id]["timestamp"] = timestamp
 
             current_model_mapping = {
@@ -138,6 +138,7 @@ async def on_message(message):
             if chat_model != current_model:
                 thread = await create_thread()
                 assistant = await create_assistant(chat_model)
+                print(chat_model)
                 keep_track[user_id]["thread"] = thread.id
                 keep_track[user_id]["has_assistant"] = assistant
 
@@ -174,105 +175,17 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
         persona (Optional[app_commands.Choice[str]]): Choose a persona
     """
     await interaction.response.defer()
-    thread = await create_thread()
-    instructions = None
     message_str = str(message)
 
-    if persona:
-        for persona_data in persona_dict.values():
-            if persona_data['value'] == persona.value:
-                persona = persona_data['name']
-                selected_persona = persona_dict[f"{persona}"]["persona"]
-                instructions = selected_persona[0]["content"]
-                break
-    else:
-        instructions = await get_default_persona()
+    response = await get_gpt_response(message_str)
 
-    await open_ai_client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=message_str
-    )
-
-    assistant = await create_assistant()
-
-    run = await open_ai_client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant.id,
-        instructions=instructions
-    )
-
-
-    print("before loop")
-    while run.status != "completed":
-        if run.status == "failed":
-            print(run.last_error)
-            print("failed")
-            await interaction.followup.send("shit broke idk, ask a better question loser")
-            return
-        if run.status == "expired":
-            print(run.last_error)
-            print("expired")
-            await interaction.followup.send("shit broke idk, ask a better question loser")
-            return
-        print(run.status)
-        await asyncio.sleep(4)
-        print("after sleep")
-
-        run = await open_ai_client.beta.threads.runs.retrieve(
-            thread_id=thread.id,
-            run_id=run.id
-        )
-
-        tool_call_list = []
-        if run.status == "requires_action":
-            tool_calls = run.required_action.submit_tool_outputs.tool_calls
-            function_data = None
-
-            for tool_call in tool_calls:
-                tool_call_id = tool_call.id
-                tool_name = tool_call.function.name
-                tool_arguments_json = tool_call.function.arguments
-                tool_arguments_dict = json.loads(tool_arguments_json)
-
-                if tool_name == "get_weather":
-                    city = tool_arguments_dict["city"]
-                    state = tool_arguments_dict["state"]
-                    country = tool_arguments_dict["country"]
-                    function_data = await get_weather(city, state, country)
-
-                if tool_name == "search_internet":
-                    query = tool_arguments_dict["query"]
-                    function_data = await search(query)
-
-                if function_data is None:
-                    function_data = "No data found."
-
-                tool_call_list.append({
-                    "tool_call_id": tool_call_id,
-                    "output": function_data
-                })
-
-            await open_ai_client.beta.threads.runs.submit_tool_outputs(
-                thread_id=thread.id,
-                run_id=run.id,
-                tool_outputs=tool_call_list
-            )
-    print(run.status)
-    print("after loop")
-
-
-    gpt_messages = await open_ai_client.beta.threads.messages.list(thread_id=thread.id)
-    print(gpt_messages)
-    for msg in gpt_messages.data:
-        if msg.role == "assistant":
-            try:
-                await interaction.followup.send(
-                    content=f'***{interaction.user.mention} - {message_str}***\n\n{msg.content[0].text.value}')
-            except:
-                await interaction.followup.send(
-                    content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
-            return
+    try:
+        await interaction.followup.send(
+            content=f'***{interaction.user.mention} - {message_str}***\n\n{response}')
+    except:
+        await interaction.followup.send(
+            content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
+    return
 
 
 @client.tree.command(name='model')

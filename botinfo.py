@@ -48,7 +48,6 @@ persona_dict = {
     }
 
 tools = [
-            {"type": "code_interpreter"},
             {
                 "type": "function",
                 "function": {
