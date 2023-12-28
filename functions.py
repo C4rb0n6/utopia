@@ -18,6 +18,7 @@ from botinfo import (
     newdickt,
     vision_dict,
     tools,
+    persona_dict
 )
 
 load_dotenv()
@@ -241,9 +242,19 @@ async def get_default_persona(chat_model="GPT-3.5 Turbo"):
     return instructions
 
 
-async def get_gpt_response(message):
-    instructions = await get_default_persona()
-    instructions = [{"role": "system", "content": instructions}, {"role": "user", "content": message}]
+async def get_gpt_response(message, persona):
+    instructions = None
+
+    if persona:
+        for persona_data in persona_dict.values():
+            if persona_data['value'] == persona.value:
+                persona = persona_data['name']
+                selected_persona = persona_dict[f"{persona}"]["persona"]
+                instructions = [{"role": "system", "content": selected_persona[0]["content"]}, {"role": "user", "content": message}]
+                break
+    else:
+        instructions = await get_default_persona()
+        instructions = [{"role": "system", "content": instructions}, {"role": "user", "content": message}]
 
     response = await open_ai_client.chat.completions.create(
         model="gpt-4-1106-preview",

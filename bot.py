@@ -177,7 +177,7 @@ async def gpt(interaction: discord.Interaction, message: str, persona: app_comma
     await interaction.response.defer()
     message_str = str(message)
 
-    response = await get_gpt_response(message_str)
+    response = await get_gpt_response(message_str, persona)
 
     try:
         await interaction.followup.send(
