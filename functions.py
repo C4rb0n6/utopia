@@ -259,7 +259,7 @@ async def get_gpt_response(message, persona):
     response = await open_ai_client.chat.completions.create(
         model="gpt-4-1106-preview",
         messages=instructions,
-        max_tokens=600,
+        max_tokens=300,
         tools=tools
     )
     response_message = response.choices[0].message
