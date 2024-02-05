@@ -24,9 +24,9 @@
      Replace placeholders (`your-discord-bot-token`, `your-openai-key`, etc.) with your actual tokens and IDs.
 
 3. **Install Dependencies:**
-   - Run the following command to install required Python packages:
+   - Run the following command to install the required Python packages:
      ```bash
-     pip install -r requirements.txt
+     pip install .
      ```
 
 4. **Run the Bot:**
