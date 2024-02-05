@@ -1,6 +1,5 @@
 import os
 import time
-import datetime
 
 import asyncio
 import discord
@@ -34,17 +33,15 @@ load_dotenv()
 message_cooldown = 1200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
 
 TOKEN = os.getenv('TOKEN')
-vanc_key = os.getenv('VANC_KEY')
-GUILD1 = os.getenv("GUILD1")
-GUILD2 = os.getenv("GUILD2")
-GUILD_ID = [GUILD1, GUILD2]
-
+open_ai_key = os.getenv('OPEN_AI_KEY')
+guild_ids_str = os.getenv("GUILD_IDS")
+GUILD_IDS = [int(guild_id) for guild_id in guild_ids_str.split(",")]
 
 class MyClient(discord.Client):
     def __init__(self, *, intents):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
-        self.guild_ids = GUILD_ID
+        self.guild_ids = GUILD_IDS
 
     async def setup_hook(self):
         for guild_id in self.guild_ids:
@@ -55,7 +52,7 @@ class MyClient(discord.Client):
 
 intents = discord.Intents().all()
 client = MyClient(intents=intents)
-open_ai_client = AsyncOpenAI(api_key=vanc_key)
+open_ai_client = AsyncOpenAI(api_key=open_ai_key)
 
 
 @client.event

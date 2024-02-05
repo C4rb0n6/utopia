@@ -28,9 +28,9 @@ MAX_MESSAGE_LENGTH = 2000  # Message length before truncation
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 weather_api_key = os.getenv('WEATHER_API_KEY')
-vanc_key = os.getenv('VANC_KEY')
+open_ai_key = os.getenv('OPEN_AI_KEY')
 
-open_ai_client = AsyncOpenAI(api_key=vanc_key)
+open_ai_client = AsyncOpenAI(api_key=open_ai_key)
 
 
 async def assistant_response(message, instructions, files=None):
@@ -233,7 +233,8 @@ async def get_vision(message):
 
 async def get_default_persona(chat_model="GPT-3.5 Turbo"):
     if chat_model == "GPT-4 Turbo":
-        instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
+        #instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
+        instructions = "You are a helpful assistant. Assist the user with question relating to literature."
     else:
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: '{current_date}', use it to assist users with questions regarding time."

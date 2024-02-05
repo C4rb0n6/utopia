@@ -1,20 +1,36 @@
-# utopia
+# Utopia Discord Bot
 
-**Discord bot that brings the power of GPT-4 Turbo, with capabilities including slash commanads, various personas, code interpreter, image understanding with the Vision model, and Google CSE and OpenWeatherMap API integration for function calls.**
+**Utopia is a Discord bot powered by GPT-4 Turbo, featuring slash commands, various personas, code interpreter, image understanding with the Vision model, and integration with Google CSE and OpenWeatherMap API.**
 
 ## Installation
 
-1. Clone the repository to your local machine or download the necessary files.
+1. **Clone the Repository:**
+   - Clone the repository to your local machine using the following command:
+     ```bash
+     git clone https://github.com/C4rb0n6/utopia.git
+     ```
 
-2. Create a '.env' file in the root directory of the project and add your keys and tokens like this:
-```
-TOKEN=your-discord-bot-token
-OPEN_AI_KEY=your-openai-key(gpt-4 capable)
-GUILD1=your-discord-guild-id
-GUILD2=your-second-discord-guild-id
-GOOGLE_API_KEY=your-google-cse-api-key
-GOOGLE_CSE_ID=your-google-cse-id
-WEATHER_API_KEY=your-openweather-api-key
-```
+2. **Set Up Environment Variables:**
+   - Create a '.env' file in the root directory of the project.
+   - Add the following environment variables with your actual keys and tokens:
+     ```env
+     TOKEN=your-discord-bot-token
+     OPEN_AI_KEY=your-openai-key  # GPT-4 capable
+     GUILD_IDS=your-discord-guild-id1,your-discord-guild-id2  # Separate with a comma
+     GOOGLE_API_KEY=your-google-cse-api-key
+     GOOGLE_CSE_ID=your-google-cse-id
+     WEATHER_API_KEY=your-openweather-api-key
+     ```
+     Replace placeholders (`your-discord-bot-token`, `your-openai-key`, etc.) with your actual tokens and IDs.
 
-3. Run [Bot](/bot.py).
+3. **Install Dependencies:**
+   - Run the following command to install required Python packages:
+     ```bash
+     pip install -r requirements.txt
+     ```
+
+4. **Run the Bot:**
+   - Run [bot.py](/bot.py) to start the bot:
+     ```bash
+     python bot.py
+     ```
