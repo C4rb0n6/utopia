@@ -233,8 +233,8 @@ async def get_vision(message):
 
 async def get_default_persona(chat_model="GPT-3.5 Turbo"):
     if chat_model == "GPT-4 Turbo":
-        #instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
-        instructions = "You are a helpful assistant. Assist the user with question relating to literature."
+        instructions = "You are a personal math tutor. When asked a math question, write and run code to answer the question."
+        #instructions = "You are a helpful assistant. Assist the user with questions relating to literature."
     else:
         current_date = datetime.datetime.now(datetime.timezone.utc)
         date = f"This is real-time data: '{current_date}', use it to assist users with questions regarding time."
@@ -329,6 +329,7 @@ async def search(query):
         return "No search results found"
 
     output = "\n".join(results)
+    print("search Results: ", output)
     return output
 
 
@@ -433,6 +434,23 @@ async def create_assistant(gpt_version="GPT-3.5 Turbo"):
                             }
                         },
                         "required": ["query"],
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_definition",
+                    "description": "Merriam-Webster API. Returns definition.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "word": {
+                                "type": "string",
+                                "description": "The word to define"
+                            }
+                        },
+                        "required": ["word"],
                     }
                 }
             },
