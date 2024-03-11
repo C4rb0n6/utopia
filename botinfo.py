@@ -21,6 +21,8 @@ eight_ball_list = [
     "My reply is no",
 ]
 
+messages_dict = {}
+
 keep_track = {}
 
 newdickt = {}
