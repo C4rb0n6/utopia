@@ -1,19 +1,24 @@
 import datetime
 import json
+import io
 import os
 
 import random
 import time
 
 import asyncio
+import aiohttp
 import discord
 import requests
+import PIL.Image
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 from botinfo import (
     eight_ball_list,
     newdickt,
-    messages_dict
+    messages_dict,
+    vision_dict,
 )
 
 load_dotenv()
@@ -23,10 +28,21 @@ MAX_MESSAGE_LENGTH = 2000  # Message length before truncation
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 weather_api_key = os.getenv('WEATHER_API_KEY')
+DICT_KEY= os.getenv('DICT_KEY')
+GEMINI_KEY = os.getenv('GEMINI_KEY')
+
+genai.configure(api_key=GEMINI_KEY)
 
 
-async def gemini(user_message, chat):
-    response = chat.send_message(user_message.content, safety_settings={
+async def gemini(user_message, chat=None):
+    if chat is None:
+        model = genai.GenerativeModel('gemini-pro')
+        chat = model.start_chat()
+        message = user_message
+    else:
+        message = user_message.content
+
+    response = chat.send_message(message, safety_settings={
         'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
         'HARM_CATEGORY_HATE_SPEECH': 'block_none',
         'HARM_CATEGORY_HARASSMENT': 'block_none',
@@ -71,7 +87,7 @@ def search(query:str):
 def get_word_definition(word:str):
     """Merriam-Webster API. Returns word definition."""
     print(word)
-    url = f'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key=e3b8524d-dde2-46ac-9d6c-d9ddff98c638'
+    url = f'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key={DICT_KEY}'
 
     response = requests.get(url)
     print(response.status_code)
@@ -152,3 +168,46 @@ async def clear_expired_messages(message_cooldown):
                 del messages_dict[user_id]
 
         await asyncio.sleep(30)
+
+async def download_file_from_url(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                content = io.BytesIO()
+                while True:
+                    chunk = await resp.content.read(1024)
+                    if not chunk:
+                        break
+                    content.write(chunk)
+                content.seek(0)
+                return content
+
+async def get_vision(message):
+    response = None
+    model = genai.GenerativeModel('gemini-pro-vision')
+    chat = model.start_chat()
+
+    if message.content and message.attachments:
+        image_url = message.attachments[0].url
+        img = await download_file_from_url(image_url)
+        img = PIL.Image.open(img)
+        response = chat.send_message([message.content,img], safety_settings={
+        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
+        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
+        'HARM_CATEGORY_HARASSMENT': 'block_none',
+        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'})
+        print(response.prompt_feedback)
+    elif message.attachments:
+        image_url = message.attachments[0].url
+        img = await download_file_from_url(image_url)
+        img = PIL.Image.open(img)
+        response = chat.send_message(img, safety_settings={
+        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
+        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
+        'HARM_CATEGORY_HARASSMENT': 'block_none',
+        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'})
+    else:
+        await message.reply("Please provide an image with your prompt.")
+        return
+    await message_reply(response.text, message)
+    return

@@ -21,6 +21,8 @@ from functions import(
     search,
     get_word_definition,
     get_weather,
+    newdickt,
+    get_vision
 )
 
 load_dotenv()
@@ -78,12 +80,25 @@ async def on_message(message):
     if message.type == discord.MessageType.pins_add:
         return
 
+    if user_id not in newdickt:
+        newdickt[user_id] = {"chat-model": "Gemini Pro", "timestamp": timestamp}
+    else:
+        newdickt[user_id]["timestamp"] = timestamp
+        chat_model = newdickt[user_id]["chat-model"]
+        if chat_model == "Gemini Pro Vision":
+            print("meow")
+            async with message.channel.typing():
+                await get_vision(message)
+                return
+
     if user_id not in messages_dict:
         #model = genai.GenerativeModel('gemini-pro',
                                       #tools=[search, get_weather, get_word_definition])
         model = genai.GenerativeModel('gemini-pro')
         chat = model.start_chat()
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "timestamp": timestamp}
+
+
 
     chat = messages_dict[user_id]["chat"]
     async with message.channel.typing():
@@ -92,56 +107,62 @@ async def on_message(message):
         return
 
 
-# @client.tree.command(name='gpt')
-# @app_commands.describe(persona="Which persona to choose..")
-# async def gpt(interaction: discord.Interaction, message: str):
-#     """
-#     Ask Gemini a question
-#
-#     Args:
-#         message (str): Your question
-#     """
-#     await interaction.response.defer()
-#     message_str = str(message)
-#
-#     response = await get_gpt_response(message_str, persona)
-#
-#     try:
-#         await interaction.followup.send(
-#             content=f'***{interaction.user.mention} - {message_str}***\n\n{response}')
-#     except:
-#         await interaction.followup.send(
-#             content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
-#     return
+@client.tree.command(name='gpt')
+async def gpt(interaction: discord.Interaction, message: str):
+    """
+    Ask Gemini a question
+
+    Args:
+        message (str): Your question
+    """
+    await interaction.response.defer()
+    message_str = str(message)
+
+    response = await gemini(message_str)
+
+    try:
+        await interaction.followup.send(
+            content=f'***{interaction.user.mention} - {message_str}***\n\n{response}')
+    except:
+        await interaction.followup.send(
+            content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
+    return
 
 
-# @client.tree.command(name='model')
-# @app_commands.describe(option="Which to choose..")
-# @app_commands.choices(option=[
-#     app_commands.Choice(name="GPT-4 Turbo", value="1"),
-#     app_commands.Choice(name="GPT-4 Vision", value="2"),
-#     app_commands.Choice(name="GPT-3.5 Turbo", value="3"),
-# ])
-# async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
-#     """
-#         Choose a model
-#
-#     """
-#     timestamp = time.time()
-#     user_id = interaction.user.id
-#     selected_model = option.name
-#
-#     if user_id not in newdickt:
-#         newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
-#         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
-#     else:
-#         chat_model = newdickt[user_id]["chat-model"]
-#
-#         if chat_model == selected_model:
-#             await interaction.response.send_message(f"**{selected_model}** is already selected.")
-#         else:
-#             newdickt[user_id]["chat-model"] = selected_model
-#             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+@client.tree.command(name='model')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+    app_commands.Choice(name="Gemini Pro", value="1"),
+    app_commands.Choice(name="Gemini Pro Vision", value="2"),
+])
+async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    """
+        Choose a model
+
+    """
+    timestamp = time.time()
+    user_id = interaction.user.id
+    selected_model = option.name
+
+    if user_id not in newdickt:
+        if selected_model == "Gemini Pro Vision":
+            await interaction.response.send_message(f"**{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
+            newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
+            return
+        newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
+        await interaction.response.send_message(f"Model changed to **{selected_model}**.")
+    else:
+        chat_model = newdickt[user_id]["chat-model"]
+
+        if chat_model == selected_model:
+            await interaction.response.send_message(f"**{selected_model}** is already selected.")
+        else:
+            if selected_model == "Gemini Pro Vision":
+                await interaction.response.send_message(f"**{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
+                newdickt[user_id]["chat-model"] = selected_model
+                return
+            newdickt[user_id]["chat-model"] = selected_model
+            await interaction.response.send_message(f"Model changed to **{selected_model}**.")
 
 
 # @client.tree.command(name='personas')
