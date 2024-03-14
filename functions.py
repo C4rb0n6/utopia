@@ -13,12 +13,13 @@ import requests
 import PIL.Image
 from dotenv import load_dotenv
 import google.generativeai as genai
+import google.ai.generativelanguage as glm
 
 from botinfo import (
     eight_ball_list,
     newdickt,
     messages_dict,
-    vision_dict,
+    safety_settings,
 )
 
 load_dotenv()
@@ -42,15 +43,38 @@ async def gemini(user_message, chat=None):
     else:
         message = user_message.content
 
-    response = chat.send_message(message, safety_settings={
-        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
-        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
-        'HARM_CATEGORY_HARASSMENT': 'block_none',
-        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'})
-    return response.text
+    response = chat.send_message(message, safety_settings=safety_settings)
+
+    if response.candidates and response.candidates[0].content.parts[0].function_call:
+        try:
+            fc = response.candidates[0].content.parts[0].function_call
+            function_name = fc.name
+            function_data = None
+
+            if function_name == "get_weather":
+                city = fc.args["city"]
+                state = fc.args["state"]
+                country = fc.args["country"]
+                function_data = await get_weather(city, state, country)
+
+            elif function_name == "search_internet":
+                query = fc.args["query"]
+                function_data = await search_internet(query)
+
+            response = chat.send_message(
+                glm.Content(
+                    parts=[glm.Part(text=function_data)]
+                )
+            )
+            return response.text
+        except Exception as e:
+            return f"Error executing function: {e}"
+
+    else:
+        return response.text
 
 
-def search(query:str):
+async def search_internet(query:str):
     """Search the internet using Google's API. Query returns top 3 search results."""
     print("search Called: ", query)
     num = 3  # Number of results to return
@@ -84,7 +108,7 @@ def search(query:str):
     return output
 
 
-def get_word_definition(word:str):
+async def get_definition(word:str):
     """Merriam-Webster API. Returns word definition."""
     print(word)
     url = f'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key={DICT_KEY}'
@@ -113,7 +137,7 @@ def get_word_definition(word:str):
         return f"Error {response.status_code}: {response.text}"
 
 
-def get_weather(city:str, state_code:str, country_code:str):
+async def get_weather(city:str, state_code:str, country_code:str):
     """Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY."""
     print("get_weather Called: ", city, state_code, country_code)
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city},{country_code}&appid={weather_api_key}&units=imperial'
@@ -183,7 +207,6 @@ async def download_file_from_url(url):
                 return content
 
 async def get_vision(message):
-    response = None
     model = genai.GenerativeModel('gemini-pro-vision')
     chat = model.start_chat()
 

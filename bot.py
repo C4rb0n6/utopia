@@ -11,6 +11,9 @@ import google.generativeai as genai
 from botinfo import (
     help_instructions,
     messages_dict,
+    tools,
+    persona_dict,
+    history
 )
 
 from functions import(
@@ -18,11 +21,8 @@ from functions import(
     eight_ball,
     gemini,
     message_reply,
-    search,
-    get_word_definition,
-    get_weather,
     newdickt,
-    get_vision
+    get_vision,
 )
 
 load_dotenv()
@@ -84,24 +84,26 @@ async def on_message(message):
         newdickt[user_id] = {"chat-model": "Gemini Pro", "timestamp": timestamp}
     else:
         newdickt[user_id]["timestamp"] = timestamp
-        chat_model = newdickt[user_id]["chat-model"]
-        if chat_model == "Gemini Pro Vision":
-            print("meow")
+
+    if user_id not in messages_dict:
+        model = genai.GenerativeModel('gemini-pro', tools=tools)
+        chat = model.start_chat(history=history)
+        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None, "timestamp": timestamp}
+
+    newdickt[user_id]["timestamp"] = timestamp
+    messages_dict[user_id]["timestamp"] = timestamp
+    chat_model = newdickt[user_id]["chat-model"]
+    chat = messages_dict[user_id]["chat"]
+    async with message.channel.typing():
+        if chat_model == "Gemini Pro No Function Calling":
+            model = genai.GenerativeModel('gemini-pro')
+            chat = model.start_chat(history=history)
+            messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
+                                      "timestamp": timestamp}
+        elif chat_model == "Gemini Pro Vision":
             async with message.channel.typing():
                 await get_vision(message)
                 return
-
-    if user_id not in messages_dict:
-        #model = genai.GenerativeModel('gemini-pro',
-                                      #tools=[search, get_weather, get_word_definition])
-        model = genai.GenerativeModel('gemini-pro')
-        chat = model.start_chat()
-        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "timestamp": timestamp}
-
-
-
-    chat = messages_dict[user_id]["chat"]
-    async with message.channel.typing():
         response = await gemini(message, chat)
         await message_reply(response, message)
         return
@@ -134,6 +136,7 @@ async def gpt(interaction: discord.Interaction, message: str):
 @app_commands.choices(option=[
     app_commands.Choice(name="Gemini Pro", value="1"),
     app_commands.Choice(name="Gemini Pro Vision", value="2"),
+    app_commands.Choice(name="Gemini Pro No Function Calling", value="3")
 ])
 async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
     """
@@ -146,7 +149,8 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
 
     if user_id not in newdickt:
         if selected_model == "Gemini Pro Vision":
-            await interaction.response.send_message(f"**{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
+            await interaction.response.send_message(
+                f":warning: *(this is not an error)* **{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
             newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
             return
         newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
@@ -158,51 +162,58 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
             await interaction.response.send_message(f"**{selected_model}** is already selected.")
         else:
             if selected_model == "Gemini Pro Vision":
-                await interaction.response.send_message(f"**{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
+                await interaction.response.send_message(
+                    f":warning: *(this is not an error)* **{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
                 newdickt[user_id]["chat-model"] = selected_model
                 return
             newdickt[user_id]["chat-model"] = selected_model
             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
 
 
-# @client.tree.command(name='personas')
-# @app_commands.describe(option="Which to choose..")
-# @app_commands.choices(option=[
-#     app_commands.Choice(name="Current Persona", value="1"),
-#     *[
-#         app_commands.Choice(name=persona_info["name"], value=persona_info["value"])
-#         for persona_info in persona_dict.values()
-#     ]
-# ])
-# async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
-#     """
-#         Choose a persona
-#
-#     """
-#     timestamp = time.time()
-#     await interaction.response.defer()
-#
-#     current_persona = next((persona_info["name"] for persona_info in persona_dict.values() if option.name in persona_info["name"]), None)
-#
-#     if current_persona:
-#         persona = persona_dict[f"{current_persona}"]["persona"]
-#         user_id = interaction.user.id
-#         thread = await create_thread()
-#         keep_track[user_id] = {"thread": thread.id, "instructions": persona[0]["content"], "persona": current_persona, "timestamp": timestamp}
-#         await interaction.followup.send(f"Persona changed to **{current_persona}**.")
-#         return
-#
-#     else:
-#         user_id = interaction.user.id
-#
-#         if user_id not in keep_track:
-#             current_per = "Default"
-#         else:
-#             current_per = keep_track[user_id]["persona"]
-#
-#         response = f"**Current Persona:** {current_per}"
-#         await interaction.followup.send(response)
-#         return
+@client.tree.command(name='personas')
+@app_commands.describe(option="Which to choose..")
+@app_commands.choices(option=[
+    app_commands.Choice(name="Current Persona", value="1"),
+    *[
+        app_commands.Choice(name=persona_info["name"], value=persona_info["value"])
+        for persona_info in persona_dict.values()
+    ]
+])
+async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
+    """
+        Choose a persona
+
+    """
+    timestamp = time.time()
+    await interaction.response.defer()
+
+    current_persona = next((persona_info["name"] for persona_info in persona_dict.values() if option.name in persona_info["name"]), None)
+
+    if current_persona:
+        persona = persona_dict[f"{current_persona}"]["persona"]
+        user_id = interaction.user.id
+        history = [
+            {"parts": [{"text": persona[0]["content"]}],
+             "role": "user"},
+            {"parts": [{"text": "Will do."}], "role": "model"}
+        ]
+        model = genai.GenerativeModel('gemini-pro')
+        chat = model.start_chat(history=history)
+        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona, "timestamp": timestamp}
+        await interaction.followup.send(f"Persona changed to **{current_persona}**.")
+        return
+
+    else:
+        user_id = interaction.user.id
+
+        if user_id not in messages_dict:
+            current_per = "Default"
+        else:
+            current_per = messages_dict[user_id]["persona"]
+
+        response = f"**Current Persona:** {current_per}"
+        await interaction.followup.send(response)
+        return
 
 
 @client.tree.command()
@@ -227,6 +238,19 @@ async def help(interaction: discord.Interaction):
     else:
         await interaction.followup.send(content=help_instructions)
 
+
+@client.tree.command()
+async def clear(interaction: discord.Interaction):
+    """Clears your chat history"""
+    await interaction.response.defer()
+    user_id = interaction.user.id
+    try:
+        del newdickt[user_id]
+        del messages_dict[user_id]
+    except KeyError:
+        await interaction.followup.send(f"User ID not found for **" + interaction.user.name + "**")
+        return
+    await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
 
 @client.tree.command()
 async def ping(interaction: discord.Interaction):

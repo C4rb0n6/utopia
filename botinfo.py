@@ -1,3 +1,5 @@
+import google.ai.generativelanguage as glm
+
 eight_ball_list = [
     "It is certain",
     "Without a doubt",
@@ -30,7 +32,7 @@ newdickt = {}
 vision_dict = {}
 
 default_persona = [
-  {"role": "system", "content": "You are a helpful assistant."}
+  {"role": "system", "content": "Your messages will be sent in discord. Use proper formatting."}
 ]
 
 persona_config = [
@@ -44,67 +46,117 @@ persona_dict = {
         for persona in persona_config
     }
 
-tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_internet",
-                    "description": "Search the internet using Google's API. Returns top 3 search results.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The search query"
-                            }
-                        },
-                        "required": ["query"],
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_definition",
-                    "description": "Merriam-Webster API. Returns definition.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "word": {
-                                "type": "string",
-                                "description": "The word to define"
-                            }
-                        },
-                        "required": ["word"],
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "City name"
-                            },
-                            "state": {
-                                "type": "string",
-                                "description": "State code (only for the US, leave blank otherwise)"
-                            },
-                            "country": {
-                                "type": "string",
-                                "description": "Country code. Please use ISO 3166 country codes"
-                            }
-                        },
-                        "required": ["city", "state", "country"],
-                    }
-                }
-            }
-        ]
+history = [
+        {"parts": [{"text": "Your messages will be sent in discord. Use proper formatting."}],
+         "role": "user"},
+        {"parts": [{"text": "Will do."}], "role": "model"}
+    ]
+
+
+# Define your tools
+search_internet_declaration = glm.FunctionDeclaration(
+    name='search_internet',
+    description="Returns short descriptions of top 3 results",
+    parameters=glm.Schema(
+        type=glm.Type.OBJECT,
+        properties={
+            'query': glm.Schema(type=glm.Type.STRING, description="The search query")
+        },
+        required=['query']
+    )
+)
+
+get_weather_declaration = glm.FunctionDeclaration(
+    name='get_weather',
+    description="Returns Fahrenheit ONLY weather data.",
+    parameters=glm.Schema(
+        type=glm.Type.OBJECT,
+        properties={
+            'city': glm.Schema(type=glm.Type.STRING, description="City name"),
+            'state': glm.Schema(type=glm.Type.STRING, description="State code (only for the US, leave blank otherwise)"),
+            'country': glm.Schema(type=glm.Type.STRING, description="Country code. Please use ISO 3166 country codes")
+        },
+        required=['city', 'state', 'country']
+    )
+)
+
+# Create a list of function declarations
+function_declarations = [
+    search_internet_declaration,
+    get_weather_declaration
+]
+
+tools = glm.Tool(function_declarations=function_declarations)
+
+
+safety_settings = {
+        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
+        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
+        'HARM_CATEGORY_HARASSMENT': 'block_none',
+        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'
+}
+
+# tools = [
+#             {
+#                 "type": "function",
+#                 "function": {
+#                     "name": "search_internet",
+#                     "description": "Search the internet using Google's API. Returns top 3 search results.",
+#                     "parameters": {
+#                         "type": "object",
+#                         "properties": {
+#                             "query": {
+#                                 "type": "string",
+#                                 "description": "The search query"
+#                             }
+#                         },
+#                         "required": ["query"],
+#                     }
+#                 }
+#             },
+#             {
+#                 "type": "function",
+#                 "function": {
+#                     "name": "get_definition",
+#                     "description": "Merriam-Webster API. Returns definition.",
+#                     "parameters": {
+#                         "type": "object",
+#                         "properties": {
+#                             "word": {
+#                                 "type": "string",
+#                                 "description": "The word to define"
+#                             }
+#                         },
+#                         "required": ["word"],
+#                     }
+#                 }
+#             },
+#             {
+#                 "type": "function",
+#                 "function": {
+#                     "name": "get_weather",
+#                     "description": "Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY.",
+#                     "parameters": {
+#                         "type": "object",
+#                         "properties": {
+#                             "city": {
+#                                 "type": "string",
+#                                 "description": "City name"
+#                             },
+#                             "state": {
+#                                 "type": "string",
+#                                 "description": "State code (only for the US, leave blank otherwise)"
+#                             },
+#                             "country": {
+#                                 "type": "string",
+#                                 "description": "Country code. Please use ISO 3166 country codes"
+#                             }
+#                         },
+#                         "required": ["city", "state", "country"],
+#                     }
+#                 }
+#             }
+#         ]
 
 help_instructions = f"""
 # Using the "!" Prefix:
