@@ -137,7 +137,7 @@ async def gpt(interaction: discord.Interaction, message: str):
 @app_commands.choices(option=[
     app_commands.Choice(name="Gemini Pro", value="1"),
     app_commands.Choice(name="Gemini Pro Vision", value="2"),
-    app_commands.Choice(name="Gemini Pro No Function Calling", value="3")
+    app_commands.Choice(name="Gemini Pro Function Calling", value="3")
 ])
 async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
     """
