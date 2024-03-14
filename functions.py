@@ -37,7 +37,7 @@ genai.configure(api_key=GEMINI_KEY)
 
 async def gemini(user_message, chat=None):
     if chat is None:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         chat = model.start_chat()
         message = user_message
     else:
@@ -207,7 +207,7 @@ async def download_file_from_url(url):
                 return content
 
 async def get_vision(message):
-    model = genai.GenerativeModel('gemini-pro-vision')
+    model = genai.GenerativeModel('gemini-pro-vision', safety_settings=safety_settings)
     chat = model.start_chat()
 
     if message.content and message.attachments:

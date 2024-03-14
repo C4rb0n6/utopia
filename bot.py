@@ -12,6 +12,7 @@ from botinfo import (
     help_instructions,
     messages_dict,
     tools,
+    safety_settings,
     persona_dict,
     history
 )
@@ -86,7 +87,7 @@ async def on_message(message):
         newdickt[user_id]["timestamp"] = timestamp
 
     if user_id not in messages_dict:
-        model = genai.GenerativeModel('gemini-pro', tools=tools)
+        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None, "timestamp": timestamp}
 
@@ -95,8 +96,8 @@ async def on_message(message):
     chat_model = newdickt[user_id]["chat-model"]
     chat = messages_dict[user_id]["chat"]
     async with message.channel.typing():
-        if chat_model == "Gemini Pro No Function Calling":
-            model = genai.GenerativeModel('gemini-pro')
+        if chat_model == "Gemini Pro Function Calling":
+            model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings, tools=tools)
             chat = model.start_chat(history=history)
             messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                       "timestamp": timestamp}
@@ -197,7 +198,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
              "role": "user"},
             {"parts": [{"text": "Will do."}], "role": "model"}
         ]
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona, "timestamp": timestamp}
         await interaction.followup.send(f"Persona changed to **{current_persona}**.")
