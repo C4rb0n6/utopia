@@ -90,7 +90,7 @@ async def on_message(message):
 
     if user_id not in messages_dict:
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
-        chat = model.start_chat(history=history)
+        chat = model.start_chat()
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                   "timestamp": timestamp}
 
@@ -101,7 +101,7 @@ async def on_message(message):
     async with message.channel.typing():
         if chat_model == "Gemini Pro Function Calling":
             model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings, tools=tools)
-            chat = model.start_chat(history=history)
+            chat = model.start_chat()
             messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                       "timestamp": timestamp}
         elif chat_model == "Gemini Pro Vision":
@@ -202,7 +202,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
             {"parts": [{"text": "Will do."}], "role": "model"}
         ]
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
-        chat = model.start_chat(history=history)
+        chat = model.start_chat()
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona,
                                   "timestamp": timestamp}
         await interaction.followup.send(f"Persona changed to **{current_persona}**.")
