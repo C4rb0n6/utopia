@@ -29,7 +29,7 @@ MAX_MESSAGE_LENGTH = 2000  # Message length before truncation
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 weather_api_key = os.getenv('WEATHER_API_KEY')
-DICT_KEY= os.getenv('DICT_KEY')
+DICT_KEY = os.getenv('DICT_KEY')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
 
 genai.configure(api_key=GEMINI_KEY)
@@ -64,7 +64,7 @@ async def gemini(user_message, chat=None):
             response = chat.send_message(
                 glm.Content(
                     parts=[glm.Part(text=function_data)]
-                )
+                ), safety_settings=safety_settings
             )
             return response.text
         except Exception as e:
@@ -74,7 +74,7 @@ async def gemini(user_message, chat=None):
         return response.text
 
 
-async def search_internet(query:str):
+async def search_internet(query: str):
     """Search the internet using Google's API. Query returns top 3 search results."""
     print("search Called: ", query)
     num = 3  # Number of results to return
@@ -108,7 +108,7 @@ async def search_internet(query:str):
     return output
 
 
-async def get_definition(word:str):
+async def get_definition(word: str):
     """Merriam-Webster API. Returns word definition."""
     print(word)
     url = f'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key={DICT_KEY}'
@@ -137,7 +137,7 @@ async def get_definition(word:str):
         return f"Error {response.status_code}: {response.text}"
 
 
-async def get_weather(city:str, state_code:str, country_code:str):
+async def get_weather(city: str, state_code: str, country_code: str):
     """Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY."""
     print("get_weather Called: ", city, state_code, country_code)
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city},{country_code}&appid={weather_api_key}&units=imperial'
@@ -193,6 +193,7 @@ async def clear_expired_messages(message_cooldown):
 
         await asyncio.sleep(30)
 
+
 async def download_file_from_url(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -206,6 +207,7 @@ async def download_file_from_url(url):
                 content.seek(0)
                 return content
 
+
 async def get_vision(message):
     model = genai.GenerativeModel('gemini-pro-vision', safety_settings=safety_settings)
     chat = model.start_chat()
@@ -214,21 +216,13 @@ async def get_vision(message):
         image_url = message.attachments[0].url
         img = await download_file_from_url(image_url)
         img = PIL.Image.open(img)
-        response = chat.send_message([message.content,img], safety_settings={
-        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
-        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
-        'HARM_CATEGORY_HARASSMENT': 'block_none',
-        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'})
+        response = chat.send_message([message.content, img], safety_settings=safety_settings)
         print(response.prompt_feedback)
     elif message.attachments:
         image_url = message.attachments[0].url
         img = await download_file_from_url(image_url)
         img = PIL.Image.open(img)
-        response = chat.send_message(img, safety_settings={
-        'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',
-        'HARM_CATEGORY_HATE_SPEECH': 'block_none',
-        'HARM_CATEGORY_HARASSMENT': 'block_none',
-        'HARM_CATEGORY_DANGEROUS_CONTENT': 'block_none'})
+        response = chat.send_message(img, safety_settings=safety_settings)
     else:
         await message.reply("Please provide an image with your prompt.")
         return

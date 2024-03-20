@@ -1,6 +1,6 @@
 # Utopia Discord Bot
 
-**Utopia is a Discord bot powered by GPT-4 Turbo, featuring slash commands, various personas, code interpreter, image understanding with the Vision model, and integration with Google CSE and OpenWeatherMap API.**
+**Utopia is a Discord bot powered by Google Gemini, featuring slash commands, various personas, image understanding with the Vision model, and integration with Google CSE and OpenWeatherMap API.**
 
 ## Installation
 
@@ -15,13 +15,13 @@
    - Add the following environment variables with your actual keys and tokens:
      ```env
      TOKEN=your-discord-bot-token
-     OPEN_AI_KEY=your-openai-key  # GPT-4 capable
-     GUILD_IDS=your-discord-guild-id1,your-discord-guild-id2  # Separate with a comma
+     GEMINI_KEY==your-gemini-key
+     GUILD_IDS=your-discord-guild-id(number 1),your-discord-guild-id(number 2)  # Separate with a comma
      GOOGLE_API_KEY=your-google-cse-api-key
      GOOGLE_CSE_ID=your-google-cse-id
      WEATHER_API_KEY=your-openweather-api-key
      ```
-     Replace placeholders (`your-discord-bot-token`, `your-openai-key`, etc.) with your actual tokens and IDs.
+     Replace placeholders (`your-discord-bot-token`, `your-gemini-key`, etc.) with your actual tokens and IDs.
 
 3. **Install Dependencies:**
    - Run the following command to install the required Python packages:

@@ -17,7 +17,7 @@ from botinfo import (
     history
 )
 
-from functions import(
+from functions import (
     clear_expired_messages,
     eight_ball,
     gemini,
@@ -32,6 +32,7 @@ message_cooldown = 1200  # time to clear all message related dicts(keep_track, n
 
 TOKEN = os.getenv('TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
+
 guild_ids_str = os.getenv("GUILD_IDS")
 GUILD_IDS = [int(guild_id) for guild_id in guild_ids_str.split(",")]
 
@@ -59,6 +60,7 @@ async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
     asyncio.create_task(clear_expired_messages(message_cooldown))
+
 
 @client.event
 async def on_message(message):
@@ -89,7 +91,8 @@ async def on_message(message):
     if user_id not in messages_dict:
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
-        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None, "timestamp": timestamp}
+        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
+                                  "timestamp": timestamp}
 
     newdickt[user_id]["timestamp"] = timestamp
     messages_dict[user_id]["timestamp"] = timestamp
@@ -200,7 +203,8 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
         ]
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
-        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona, "timestamp": timestamp}
+        messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona,
+                                  "timestamp": timestamp}
         await interaction.followup.send(f"Persona changed to **{current_persona}**.")
         return
 
@@ -248,10 +252,11 @@ async def clear(interaction: discord.Interaction):
     try:
         del newdickt[user_id]
         del messages_dict[user_id]
+        await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
     except KeyError:
         await interaction.followup.send(f"User ID not found for **" + interaction.user.name + "**")
         return
-    await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
+
 
 @client.tree.command()
 async def ping(interaction: discord.Interaction):
