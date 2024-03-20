@@ -20,6 +20,7 @@ from botinfo import (
     newdickt,
     messages_dict,
     safety_settings,
+    persona_dict,
 )
 
 load_dotenv()
@@ -37,8 +38,14 @@ genai.configure(api_key=GEMINI_KEY)
 
 async def gemini(user_message, chat=None):
     if chat is None:
+        persona = persona_dict["DAN"]["persona"]
+        history = [
+            {"parts": [{"text": persona[0]["content"]}],
+             "role": "user"},
+            {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
+        ]
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
-        chat = model.start_chat()
+        chat = model.start_chat(history=history)
         message = user_message
     else:
         message = user_message.content
@@ -217,7 +224,6 @@ async def get_vision(message):
         img = await download_file_from_url(image_url)
         img = PIL.Image.open(img)
         response = chat.send_message([message.content, img], safety_settings=safety_settings)
-        print(response.prompt_feedback)
     elif message.attachments:
         image_url = message.attachments[0].url
         img = await download_file_from_url(image_url)

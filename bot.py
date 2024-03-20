@@ -4,7 +4,7 @@ import time
 import asyncio
 import discord
 
-from discord import app_commands
+from discord import app_commands, HTTPException
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -129,9 +129,10 @@ async def gpt(interaction: discord.Interaction, message: str):
     try:
         await interaction.followup.send(
             content=f'***{interaction.user.mention} - {message_str}***\n\n{response}')
-    except:
+    except HTTPException as e:
+        print(f"GPT Error: {e}")
         await interaction.followup.send(
-            content=f'***{interaction.user.mention} - {message_str}***\n\n shit too long idk bro')
+            content=f'***{interaction.user.mention} - {message_str}***\n\n {e}')
     return
 
 
@@ -190,33 +191,31 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
     """
     timestamp = time.time()
     await interaction.response.defer()
+    user_id = interaction.user.id
 
     current_persona = next((persona_info["name"] for persona_info in persona_dict.values() if option.name in persona_info["name"]), None)
 
     if current_persona:
         persona = persona_dict[f"{current_persona}"]["persona"]
-        user_id = interaction.user.id
         history = [
             {"parts": [{"text": persona[0]["content"]}],
              "role": "user"},
-            {"parts": [{"text": "Will do."}], "role": "model"}
+            {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
         ]
         model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
-        chat = model.start_chat()
+        chat = model.start_chat(history=history)
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona,
                                   "timestamp": timestamp}
         await interaction.followup.send(f"Persona changed to **{current_persona}**.")
         return
 
     else:
-        user_id = interaction.user.id
-
         if user_id not in messages_dict:
-            current_per = "Default"
+            display_persona = "Default"
         else:
-            current_per = messages_dict[user_id]["persona"]
+            display_persona = messages_dict[user_id]["persona"]
 
-        response = f"**Current Persona:** {current_per}"
+        response = f"**Current Persona:** {display_persona}"
         await interaction.followup.send(response)
         return
 
