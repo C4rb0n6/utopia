@@ -10,7 +10,7 @@ setup(
         'python-dotenv==1.0.0',
         'requests==2.31.0',
         'google-ai-generativelanguage==0.4.0',
-        'google-generativeai==0.4.0'
+        'google-generativeai==0.4.0',
         'pillow==10.2.0',
     ],
 )
