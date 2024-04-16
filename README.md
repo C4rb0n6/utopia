@@ -29,7 +29,10 @@
      pip install .
      ```
 
-4. **Run the Bot:**
+4. **Setup Discord Server:** 
+   - Create a channel with ```Gemini``` as the topic.
+
+5. **Run the Bot:**
    - Run [bot.py](/bot.py) to start the bot:
      ```bash
      python bot.py
