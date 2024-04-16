@@ -74,7 +74,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.topic != 'Gemini':
+    if message.channel.topic.lower() != 'gemini':
         return
 
     if message.content.startswith("!"):
