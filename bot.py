@@ -74,7 +74,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.name != 'chat-gpt':
+    if message.channel.topic != 'Gemini':
         return
 
     if message.content.startswith("!"):
