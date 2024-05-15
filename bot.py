@@ -1,9 +1,8 @@
+import asyncio
 import os
 import time
 
-import asyncio
 import discord
-
 from discord import app_commands, HTTPException
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -14,25 +13,21 @@ from botinfo import (
     tools,
     safety_settings,
     persona_dict,
-    history
 )
-
 from functions import (
     clear_expired_messages,
+    delete_messages,
     eight_ball,
     gemini,
+    get_vision,
     message_reply,
     newdickt,
-    get_vision,
 )
 
 load_dotenv()
-
 message_cooldown = 1200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
-
 TOKEN = os.getenv('TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
-
 guild_ids_str = os.getenv("GUILD_IDS")
 GUILD_IDS = [int(guild_id) for guild_id in guild_ids_str.split(",")]
 
@@ -67,20 +62,20 @@ async def on_message(message):
     user_id = message.author.id
     timestamp = time.time()
 
+    if message.author.bot:
+        return
+
     if message.content.startswith("?8ball "):
         await eight_ball(message)
         return
 
-    if message.author.bot:
-        return
-
-    if message.channel.topic.lower() != 'gemini':
-        return
+    if message.content.lower().startswith("?clear "):
+        await delete_messages(int(message.content[7:]), message)
 
     if message.content.startswith("!"):
         return
 
-    if message.type == discord.MessageType.pins_add:
+    if message.channel.topic is None or message.channel.topic.lower() == 'gemini':
         return
 
     if user_id not in newdickt:
@@ -113,6 +108,28 @@ async def on_message(message):
         return
 
 
+@client.tree.command()
+async def clear(interaction: discord.Interaction, messages: int) -> None:
+    """Clears a number of messages"""
+    await interaction.response.defer()
+    await delete_messages(messages, None, interaction)
+    return
+
+
+@client.tree.command()
+async def gemini_clear(interaction: discord.Interaction):
+    """Clears your Gemini chat history"""
+    await interaction.response.defer()
+    user_id = interaction.user.id
+    try:
+        del newdickt[user_id]
+        del messages_dict[user_id]
+        await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
+    except KeyError:
+        await interaction.followup.send(f"User ID not found for **" + interaction.user.name + "**")
+        return
+
+
 @client.tree.command(name='gpt')
 async def gpt(interaction: discord.Interaction, message: str):
     """
@@ -134,6 +151,29 @@ async def gpt(interaction: discord.Interaction, message: str):
         await interaction.followup.send(
             content=f'***{interaction.user.mention} - {message_str}***\n\n {e}')
     return
+
+
+@client.tree.command()
+async def help(interaction: discord.Interaction):
+    """Returns list of commands"""
+    await interaction.response.defer()
+    chat_gpt_channel = discord.utils.get(interaction.guild.channels, name="chat-gpt")
+    if chat_gpt_channel:
+        channel_link = f'https://discord.com/channels/{interaction.guild.id}/{chat_gpt_channel.id}'
+        instructions = f"""
+## **Commands:**
+**?8ball**: Classic 8-ball responses. (e.g., `?8ball popeyes?`).
+**/ping**: Check bot latency. Type `/ping`.
+**/model [model_name]**: Switch chat models (e.g., `/model GPT-4 Turbo`).
+**/personas [persona_name]**: Change bot personality (e.g., `/personas DAN`).
+**/gpt [message] [--persona_name]**: Simplified chat with optional persona.
+
+- Adding the "!" prefix before messages will instruct the bot to ignore those messages in {channel_link}
+"""
+
+        await interaction.followup.send(content=instructions)
+    else:
+        await interaction.followup.send(content=help_instructions)
 
 
 @client.tree.command(name='model')
@@ -217,43 +257,6 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
 
         response = f"**Current Persona:** {display_persona}"
         await interaction.followup.send(response)
-        return
-
-
-@client.tree.command()
-async def help(interaction: discord.Interaction):
-    """Returns list of commands"""
-    await interaction.response.defer()
-    chat_gpt_channel = discord.utils.get(interaction.guild.channels, name="chat-gpt")
-    if chat_gpt_channel:
-        channel_link = f'https://discord.com/channels/{interaction.guild.id}/{chat_gpt_channel.id}'
-        instructions = f"""
-## **Commands:**
-**?8ball**: Classic 8-ball responses. (e.g., `?8ball popeyes?`).
-**/ping**: Check bot latency. Type `/ping`.
-**/model [model_name]**: Switch chat models (e.g., `/model GPT-4 Turbo`).
-**/personas [persona_name]**: Change bot personality (e.g., `/personas DAN`).
-**/gpt [message] [--persona_name]**: Simplified chat with optional persona.
-
-- Adding the "!" prefix before messages will instruct the bot to ignore those messages in {channel_link}
-"""
-
-        await interaction.followup.send(content=instructions)
-    else:
-        await interaction.followup.send(content=help_instructions)
-
-
-@client.tree.command()
-async def clear(interaction: discord.Interaction):
-    """Clears your chat history"""
-    await interaction.response.defer()
-    user_id = interaction.user.id
-    try:
-        del newdickt[user_id]
-        del messages_dict[user_id]
-        await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
-    except KeyError:
-        await interaction.followup.send(f"User ID not found for **" + interaction.user.name + "**")
         return
 
 
