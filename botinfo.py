@@ -54,8 +54,6 @@ history = [
         {"parts": [{"text": "Will do."}], "role": "model"}
     ]
 
-
-# Define your tools
 search_internet_declaration = glm.FunctionDeclaration(
     name='search_internet',
     description="Returns short descriptions of top 3 results",
@@ -82,14 +80,12 @@ get_weather_declaration = glm.FunctionDeclaration(
     )
 )
 
-# Create a list of function declarations
 function_declarations = [
     search_internet_declaration,
     get_weather_declaration
 ]
 
 tools = glm.Tool(function_declarations=function_declarations)
-
 
 safety_settings = {
         'HARM_CATEGORY_SEXUALLY_EXPLICIT': 'block_none',

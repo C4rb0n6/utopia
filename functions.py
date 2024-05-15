@@ -32,7 +32,7 @@ GEMINI_KEY = os.getenv('GEMINI_KEY')
 genai.configure(api_key=GEMINI_KEY)
 
 
-async def clear_expired_messages(message_cooldown):
+async def clear_expired_messages(message_cooldown: int) -> None:
     while True:
         current_time = time.time()
 
@@ -88,7 +88,7 @@ async def delete_messages(num: int, user_message: discord.Message = None, intera
         return
 
 
-async def download_file_from_url(url):
+async def download_file_from_url(url: str) -> io.BytesIO:
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status == 200:
@@ -102,7 +102,7 @@ async def download_file_from_url(url):
                 return content
 
 
-async def eight_ball(message):
+async def eight_ball(message: discord.Message) -> None:
     eight_ball_message = random.choice(eight_ball_list)
     question = message.content[7:]
     title = f'{message.author.name}\n:8ball: 8ball'
@@ -111,9 +111,10 @@ async def eight_ball(message):
     embed.set_footer(text=datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p'))
     channel = message.channel
     await channel.send(embed=embed)
+    return
 
 
-async def gemini(user_message, chat=None):
+async def gemini(user_message: discord.Message, chat: genai.ChatSession = None) -> str:
     if chat is None:
         persona = persona_dict["DAN"]["persona"]
         history = [
@@ -158,7 +159,7 @@ async def gemini(user_message, chat=None):
         return response.text
 
 
-async def get_definition(word: str):
+async def get_definition(word: str) -> str:
     """Merriam-Webster API. Returns word definition."""
     print(word)
     url = f'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{word}?key={DICT_KEY}'
@@ -187,7 +188,7 @@ async def get_definition(word: str):
         return f"Error {response.status_code}: {response.text}"
 
 
-async def get_vision(message):
+async def get_vision(message: discord.Message) -> None:
     model = genai.GenerativeModel('gemini-pro-vision', safety_settings=safety_settings)
     chat = model.start_chat()
 
@@ -208,7 +209,7 @@ async def get_vision(message):
     return
 
 
-async def get_weather(city: str, state_code: str, country_code: str):
+async def get_weather(city: str, state_code: str, country_code: str) -> str:
     """Get current weather data using OpenWeatherMap's API. Returns Fahrenheit ONLY."""
     print("get_weather Called: ", city, state_code, country_code)
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city},{country_code}&appid={weather_api_key}&units=imperial'
@@ -226,7 +227,7 @@ async def get_weather(city: str, state_code: str, country_code: str):
         return f'Unable to retrieve weather data. Status code: {response.status_code}'
 
 
-async def message_reply(content, message):
+async def message_reply(content: str, message: discord.Message) -> None:
     if len(content) <= MAX_MESSAGE_LENGTH:
         await message.reply(content)
     else:
@@ -237,7 +238,7 @@ async def message_reply(content, message):
     return
 
 
-async def search_internet(query: str):
+async def search_internet(query: str) -> str:
     """Search the internet using Google's API. Query returns top 3 search results."""
     print("search Called: ", query)
     num = 3  # Number of results to return

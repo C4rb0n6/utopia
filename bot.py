@@ -58,7 +58,7 @@ async def on_ready():
 
 
 @client.event
-async def on_message(message):
+async def on_message(message: discord.Message) -> None:
     user_id = message.author.id
     timestamp = time.time()
 
@@ -71,11 +71,12 @@ async def on_message(message):
 
     if message.content.lower().startswith("?clear "):
         await delete_messages(int(message.content[7:]), message)
+        return
 
     if message.content.startswith("!"):
         return
 
-    if message.channel.topic is None or message.channel.topic.lower() == 'gemini':
+    if message.channel.topic is None or message.channel.topic.lower() != 'gemini':
         return
 
     if user_id not in newdickt:
@@ -117,7 +118,7 @@ async def clear(interaction: discord.Interaction, messages: int) -> None:
 
 
 @client.tree.command()
-async def gemini_clear(interaction: discord.Interaction):
+async def gemini_clear(interaction: discord.Interaction) -> None:
     """Clears your Gemini chat history"""
     await interaction.response.defer()
     user_id = interaction.user.id
@@ -131,7 +132,7 @@ async def gemini_clear(interaction: discord.Interaction):
 
 
 @client.tree.command(name='gpt')
-async def gpt(interaction: discord.Interaction, message: str):
+async def gpt(interaction: discord.Interaction, message: str) -> None:
     """
     Ask Gemini a question
 
@@ -154,7 +155,7 @@ async def gpt(interaction: discord.Interaction, message: str):
 
 
 @client.tree.command()
-async def help(interaction: discord.Interaction):
+async def help(interaction: discord.Interaction) -> None:
     """Returns list of commands"""
     await interaction.response.defer()
     chat_gpt_channel = discord.utils.get(interaction.guild.channels, name="chat-gpt")
@@ -183,7 +184,7 @@ async def help(interaction: discord.Interaction):
     app_commands.Choice(name="Gemini Pro Vision", value="2"),
     app_commands.Choice(name="Gemini Pro Function Calling", value="3")
 ])
-async def model(interaction: discord.Interaction, option: app_commands.Choice[str]):
+async def model(interaction: discord.Interaction, option: app_commands.Choice[str]) -> None:
     """
         Choose a model
 
@@ -224,7 +225,7 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
         for persona_info in persona_dict.values()
     ]
 ])
-async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]):
+async def personas(interaction: discord.Interaction, option: app_commands.Choice[str]) -> None:
     """
         Choose a persona
 
@@ -261,7 +262,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
 
 
 @client.tree.command()
-async def ping(interaction: discord.Interaction):
+async def ping(interaction: discord.Interaction) -> None:
     """Returns the bot latency"""
     await interaction.response.defer()
     bot_latency = round(client.latency * 1000)
