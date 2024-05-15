@@ -106,7 +106,6 @@ async def on_message(message: discord.Message) -> None:
                 return
         response = await gemini(message, chat)
         await message_reply(response, message)
-        return
 
 
 @client.tree.command()
@@ -114,7 +113,6 @@ async def clear(interaction: discord.Interaction, messages: int) -> None:
     """Clears a number of messages"""
     await interaction.response.defer()
     await delete_messages(messages, None, interaction)
-    return
 
 
 @client.tree.command()
@@ -128,7 +126,6 @@ async def gemini_clear(interaction: discord.Interaction) -> None:
         await interaction.followup.send(f"Cleared chat history for **" + interaction.user.name + "**")
     except KeyError:
         await interaction.followup.send(f"User ID not found for **" + interaction.user.name + "**")
-        return
 
 
 @client.tree.command(name='gpt')
@@ -151,7 +148,6 @@ async def gpt(interaction: discord.Interaction, message: str) -> None:
         print(f"GPT Error: {e}")
         await interaction.followup.send(
             content=f'***{interaction.user.mention} - {message_str}***\n\n {e}')
-    return
 
 
 @client.tree.command()

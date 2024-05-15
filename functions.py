@@ -60,7 +60,6 @@ async def delete_messages(num: int, user_message: discord.Message = None, intera
         if num > 50:
             await interaction.followup.send("Sorry, you can't delete more than 50 messages at a time")
             return
-
         if not perms:
             reply = await interaction.followup.send(f"You don't have permission to use this command")
             await reply.delete(delay=3)
@@ -111,7 +110,6 @@ async def eight_ball(message: discord.Message) -> None:
     embed.set_footer(text=datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p'))
     channel = message.channel
     await channel.send(embed=embed)
-    return
 
 
 async def gemini(user_message: discord.Message, chat: genai.ChatSession = None) -> str:
@@ -206,7 +204,6 @@ async def get_vision(message: discord.Message) -> None:
         await message.reply("Please provide an image with your prompt.")
         return
     await message_reply(response.text, message)
-    return
 
 
 async def get_weather(city: str, state_code: str, country_code: str) -> str:
@@ -235,7 +232,6 @@ async def message_reply(content: str, message: discord.Message) -> None:
         await message.reply(chunks[0])
         for chunk in chunks[1:]:
             await message.channel.send(chunk)
-    return
 
 
 async def search_internet(query: str) -> str:
