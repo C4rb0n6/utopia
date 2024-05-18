@@ -39,7 +39,7 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
         if now.hour == 12 and now.minute == 0:
             lottery_won = False
             for user in lottery.copy():
-                if lottery[user]["is_banned"] is True:
+                if random.randint(1, 10000) == random.randint(1, 10000):
                     lottery_won = True
                     await channel.send(f"<@{user.id}>, you're the lucky 1 / 100,000,000")
                     await user.ban(reason="1 in a one hundred million")

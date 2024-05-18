@@ -83,11 +83,7 @@ async def on_message(message: discord.Message) -> None:
         return
 
     if message.author not in lottery:
-        lottery[message.author] = {"is_banned": False}
-
-    if random.randint(1, 10000) == random.randint(1, 10000):
-        lottery[message.author]["is_banned"] = True
-        print(f"{message.author} is cooked")
+        lottery.append(message.author)
 
     if message.channel.topic is None or message.channel.topic.lower() != 'gemini':
         return
