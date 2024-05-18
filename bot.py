@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+import random
 
 import discord
 from discord import app_commands, HTTPException
@@ -75,6 +76,9 @@ async def on_message(message: discord.Message) -> None:
 
     if message.content.startswith("!"):
         return
+
+    if message.author.id == "314634440175386626" and random.randint(1, 1000) == random.randint(1, 1000):
+        await message.author.ban(reason="1 in a million")
 
     if message.channel.topic is None or message.channel.topic.lower() != 'gemini':
         return

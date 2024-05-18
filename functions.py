@@ -126,7 +126,10 @@ async def gemini(user_message: discord.Message, chat: genai.ChatSession = None) 
     else:
         message = user_message.content
 
-    response = chat.send_message(message, safety_settings=safety_settings)
+    try:
+        response = chat.send_message(message, safety_settings=safety_settings)
+    except Exception as e:
+        return f"Error getting response: {e}"
 
     if response.candidates and response.candidates[0].content.parts[0].function_call:
         try:
