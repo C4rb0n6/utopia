@@ -14,6 +14,7 @@ from botinfo import (
     tools,
     safety_settings,
     persona_dict,
+    lottery,
 )
 from functions import (
     clear_expired_messages,
@@ -23,6 +24,7 @@ from functions import (
     get_vision,
     message_reply,
     newdickt,
+    draw_lottery,
 )
 
 load_dotenv()
@@ -55,11 +57,14 @@ genai.configure(api_key=GEMINI_KEY)
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
+    channel = client.get_channel(862846842068271115)
     asyncio.create_task(clear_expired_messages(message_cooldown))
+    asyncio.create_task(draw_lottery(channel))
 
 
 @client.event
 async def on_message(message: discord.Message) -> None:
+
     user_id = message.author.id
     timestamp = time.time()
 
@@ -77,10 +82,12 @@ async def on_message(message: discord.Message) -> None:
     if message.content.startswith("!"):
         return
 
+    if message.author not in lottery:
+        lottery[message.author] = {"is_banned": False}
+
     if random.randint(1, 10000) == random.randint(1, 10000):
-        await message.reply("Congrats man you're the lucky 1 / 100,000,000")
-        await message.author.ban(reason="1 in a one hundred million")
-        return
+        lottery[message.author]["is_banned"] = True
+        print(f"{message.author} is cooked")
 
     if message.channel.topic is None or message.channel.topic.lower() != 'gemini':
         return

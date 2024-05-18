@@ -28,6 +28,8 @@ messages_dict = {}
 
 keep_track = {}
 
+lottery = {}
+
 newdickt = {}
 
 vision_dict = {}

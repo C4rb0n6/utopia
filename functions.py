@@ -20,6 +20,7 @@ from botinfo import (
     messages_dict,
     safety_settings,
     persona_dict,
+    lottery,
 )
 
 load_dotenv()
@@ -30,6 +31,25 @@ weather_api_key = os.getenv('WEATHER_API_KEY')
 DICT_KEY = os.getenv('DICT_KEY')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
 genai.configure(api_key=GEMINI_KEY)
+
+
+async def draw_lottery(channel: discord.TextChannel) -> None:
+    while True:
+        now = datetime.datetime.now()
+        if now.hour == 12 and now.minute == 0:
+            lottery_won = False
+            for user in lottery.copy():
+                if lottery[user]["is_banned"] is True:
+                    lottery_won = True
+                    await channel.send(f"<@{user.id}>, you're the lucky 1 / 100,000,000")
+                    await user.ban(reason="1 in a one hundred million")
+            if not lottery_won:
+                await channel.send("No one won today :(")
+            lottery.clear()
+
+        await asyncio.sleep(30)
+
+
 
 
 async def clear_expired_messages(message_cooldown: int) -> None:
