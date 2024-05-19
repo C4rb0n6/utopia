@@ -40,8 +40,6 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
             lottery_won = False
             try:
                 for user in lottery.copy():
-                    print(user)
-                    print(channel)
                     if random.randint(1, 10000) == random.randint(1, 10000):
                         lottery_won = True
                         await channel.send(f"<@{user.id}>, you're the lucky 1 / 100,000,000")
@@ -57,7 +55,6 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
 
 async def clear_expired_messages(message_cooldown: int) -> None:
     while True:
-        print(lottery)
         current_time = time.time()
 
         for user_id in newdickt.copy():
@@ -70,7 +67,7 @@ async def clear_expired_messages(message_cooldown: int) -> None:
             if current_time - timestamp > message_cooldown:
                 del messages_dict[user_id]
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(30)
 
 
 async def delete_messages(num: int, user_message: discord.Message = None, interaction: discord.Interaction = None) -> None:
