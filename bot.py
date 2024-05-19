@@ -57,7 +57,7 @@ genai.configure(api_key=GEMINI_KEY)
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
-    channel = client.get_channel(862846842068271115)
+    channel = client.get_channel(552148838274826240)
     asyncio.create_task(clear_expired_messages(message_cooldown))
     asyncio.create_task(draw_lottery(channel))
 
