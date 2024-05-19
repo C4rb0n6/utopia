@@ -49,7 +49,7 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
                 if not lottery_won:
                     await channel.send("No one won today :(")
             except Exception as e:
-                print(f"Error with lottery: {e}")
+                print(f"Error with lottery draw: {e}")
             finally:
                 lottery.clear()
                 await asyncio.sleep(30)
