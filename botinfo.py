@@ -28,7 +28,7 @@ messages_dict = {}
 
 keep_track = {}
 
-lottery = {}
+lottery = []
 
 newdickt = {}
 

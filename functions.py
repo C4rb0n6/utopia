@@ -46,10 +46,7 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
             if not lottery_won:
                 await channel.send("No one won today :(")
             lottery.clear()
-
         await asyncio.sleep(30)
-
-
 
 
 async def clear_expired_messages(message_cooldown: int) -> None:
