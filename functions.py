@@ -50,7 +50,9 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
                 print(f"Error with lottery draw: {e}")
             finally:
                 lottery.clear()
-        await asyncio.sleep(30)
+            await asyncio.sleep(60)
+        else:
+            await asyncio.sleep(30)
 
 
 async def clear_expired_messages(message_cooldown: int) -> None:
