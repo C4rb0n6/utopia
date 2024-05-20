@@ -20,7 +20,6 @@ from functions import (
     delete_messages,
     eight_ball,
     gemini,
-    get_vision,
     message_reply,
     newdickt,
     draw_lottery,
@@ -93,7 +92,8 @@ async def on_message(message: discord.Message) -> None:
         newdickt[user_id]["timestamp"] = timestamp
 
     if user_id not in messages_dict:
-        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
+        print(model)
         chat = model.start_chat()
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                   "timestamp": timestamp}
@@ -104,14 +104,10 @@ async def on_message(message: discord.Message) -> None:
     chat = messages_dict[user_id]["chat"]
     async with message.channel.typing():
         if chat_model == "Gemini Pro Function Calling":
-            model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings, tools=tools)
+            model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings, tools=tools)
             chat = model.start_chat()
             messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                       "timestamp": timestamp}
-        elif chat_model == "Gemini Pro Vision":
-            async with message.channel.typing():
-                await get_vision(message)
-                return
         response = await gemini(message, chat)
         await message_reply(response, message)
 
@@ -185,8 +181,7 @@ async def help(interaction: discord.Interaction) -> None:
 @app_commands.describe(option="Which to choose..")
 @app_commands.choices(option=[
     app_commands.Choice(name="Gemini Pro", value="1"),
-    app_commands.Choice(name="Gemini Pro Vision", value="2"),
-    app_commands.Choice(name="Gemini Pro Function Calling", value="3")
+    app_commands.Choice(name="Gemini Pro Function Calling", value="2")
 ])
 async def model(interaction: discord.Interaction, option: app_commands.Choice[str]) -> None:
     """
@@ -198,11 +193,6 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
     selected_model = option.name
 
     if user_id not in newdickt:
-        if selected_model == "Gemini Pro Vision":
-            await interaction.response.send_message(
-                f":warning: *(this is not an error)* **{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
-            newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
-            return
         newdickt[user_id] = {"chat-model": option.name, "timestamp": timestamp}
         await interaction.response.send_message(f"Model changed to **{selected_model}**.")
     else:
@@ -211,11 +201,6 @@ async def model(interaction: discord.Interaction, option: app_commands.Choice[st
         if chat_model == selected_model:
             await interaction.response.send_message(f"**{selected_model}** is already selected.")
         else:
-            if selected_model == "Gemini Pro Vision":
-                await interaction.response.send_message(
-                    f":warning: *(this is not an error)* **{selected_model}** does not support multi-turn conversations. Attach both your image and prompt to one message.")
-                newdickt[user_id]["chat-model"] = selected_model
-                return
             newdickt[user_id]["chat-model"] = selected_model
             await interaction.response.send_message(f"Model changed to **{selected_model}**.")
 
@@ -247,7 +232,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
              "role": "user"},
             {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
         ]
-        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona,
                                   "timestamp": timestamp}

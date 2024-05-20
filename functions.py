@@ -50,7 +50,9 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
                 print(f"Error with lottery draw: {e}")
             finally:
                 lottery.clear()
-        await asyncio.sleep(30)
+            await asyncio.sleep(60)
+        else:
+            await asyncio.sleep(30)
 
 
 async def clear_expired_messages(message_cooldown: int) -> None:
@@ -133,7 +135,8 @@ async def eight_ball(message: discord.Message) -> None:
     await channel.send(embed=embed)
 
 
-async def gemini(user_message: discord.Message, chat: genai.ChatSession = None) -> str:
+async def gemini(message: discord.Message, chat: genai.ChatSession = None) -> str:
+    response = None
     if chat is None:
         persona = persona_dict["DAN"]["persona"]
         history = [
@@ -141,14 +144,21 @@ async def gemini(user_message: discord.Message, chat: genai.ChatSession = None) 
              "role": "user"},
             {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
         ]
-        model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
-        message = user_message
-    else:
-        message = user_message.content
+        response = chat.send_message(message, safety_settings=safety_settings)
+        return response.text
 
     try:
-        response = chat.send_message(message, safety_settings=safety_settings)
+        if message.attachments:
+            image_url = message.attachments[0].url
+            img = await download_file_from_url(image_url)
+            img = PIL.Image.open(img)
+            content = [message.content, img] if message.content else img
+        else:
+            content = message.content if message.content else None
+        if content:
+            response = chat.send_message(content, safety_settings=safety_settings)
     except Exception as e:
         return f"Error getting response: {e}"
 
@@ -208,26 +218,6 @@ async def get_definition(word: str) -> str:
             return f"Error decoding JSON: {e}"
     else:
         return f"Error {response.status_code}: {response.text}"
-
-
-async def get_vision(message: discord.Message) -> None:
-    model = genai.GenerativeModel('gemini-pro-vision', safety_settings=safety_settings)
-    chat = model.start_chat()
-
-    if message.content and message.attachments:
-        image_url = message.attachments[0].url
-        img = await download_file_from_url(image_url)
-        img = PIL.Image.open(img)
-        response = chat.send_message([message.content, img], safety_settings=safety_settings)
-    elif message.attachments:
-        image_url = message.attachments[0].url
-        img = await download_file_from_url(image_url)
-        img = PIL.Image.open(img)
-        response = chat.send_message(img, safety_settings=safety_settings)
-    else:
-        await message.reply("Please provide an image with your prompt.")
-        return
-    await message_reply(response.text, message)
 
 
 async def get_weather(city: str, state_code: str, country_code: str) -> str:
