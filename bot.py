@@ -26,7 +26,7 @@ from functions import (
 )
 
 load_dotenv()
-message_cooldown = 1200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
+message_cooldown = 1_200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
 TOKEN = os.getenv('TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
 guild_ids_str = os.getenv("GUILD_IDS")

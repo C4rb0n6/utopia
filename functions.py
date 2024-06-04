@@ -36,11 +36,11 @@ genai.configure(api_key=GEMINI_KEY)
 async def draw_lottery(channel: discord.TextChannel) -> None:
     while True:
         now = datetime.datetime.now()
-        if now.hour == 12 and now.minute == 0:
+        if now.hour == 12 and now.minute == 00:
             lottery_won = False
             try:
                 for user in lottery.copy():
-                    if random.randint(1, 10000) == random.randint(1, 10000):
+                    if random.randint(1, 100_000_000) == 1:
                         lottery_won = True
                         await channel.send(f"<@{user.id}>, you're the lucky 1 / 100,000,000")
                         await user.ban(reason="1 in a one hundred million")
@@ -50,9 +50,9 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
                 print(f"Error with lottery draw: {e}")
             finally:
                 lottery.clear()
-            await asyncio.sleep(60)
+                await asyncio.sleep(60)
         else:
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
 
 
 async def clear_expired_messages(message_cooldown: int) -> None:
