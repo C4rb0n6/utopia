@@ -38,6 +38,7 @@ class MyClient(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.guild_ids = GUILD_IDS
+        self.lottery_task_started = False
 
     async def setup_hook(self):
         for guild_id in self.guild_ids:
@@ -57,7 +58,9 @@ async def on_ready():
     print('------')
     channel = client.get_channel(862846842068271115)
     asyncio.create_task(clear_expired_messages(message_cooldown))
-    asyncio.create_task(draw_lottery(channel))
+    if not client.lottery_task_started:
+        asyncio.create_task(draw_lottery(channel))
+        client.lottery_task_started = True
 
 
 @client.event
