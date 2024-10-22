@@ -37,20 +37,23 @@ async def draw_lottery(channel: discord.TextChannel) -> None:
     while True:
         now = datetime.datetime.now()
         if now.hour == 12 and now.minute == 00:
-            lottery_won = False
-            try:
-                for user in lottery.copy():
-                    if random.randint(1, 100_000_000) == 1:
-                        lottery_won = True
-                        await channel.send(f"<@{user.id}>, you're the lucky 1 / 100,000,000")
-                        await user.ban(reason="1 in a one hundred million")
-                if not lottery_won:
-                    await channel.send("No one won today :(")
-            except Exception as e:
-                print(f"Error with lottery draw: {e}")
-            finally:
-                lottery.clear()
-                await asyncio.sleep(61)
+            if len(lottery) != 0:
+                lottery_won = False
+                winning_number = random.randint(1, 100_000_000)
+                try:
+                    for message in lottery.copy():
+                        if random.randint(1, 100_000_000) == winning_number:
+                            lottery_won = True
+                            await message.reply(f"<@{message.author.id}>, you're the chosen one...")
+                            await message.author.ban(reason="lucky fella")
+                    if not lottery_won:
+                        await channel.send("No one won today :(")
+                except Exception as e:
+                    print(f"Error with lottery draw: {e}")
+                finally:
+                    lottery_won = False
+                    lottery.clear()
+                    await asyncio.sleep(61)
         else:
             await asyncio.sleep(30)
 
