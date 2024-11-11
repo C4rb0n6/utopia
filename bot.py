@@ -27,6 +27,7 @@ from functions import (
 
 load_dotenv()
 message_cooldown = 1_200  # time to clear all message related dicts(keep_track, newdickt, vision_dict)
+DEFAULT_CHANNEL = int(os.getenv("DEFAULT_CHANNEL"))
 TOKEN = os.getenv('TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
 guild_ids_str = os.getenv("GUILD_IDS")
@@ -38,6 +39,7 @@ class MyClient(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.guild_ids = GUILD_IDS
+        self.lottery_task_started = False
 
     async def setup_hook(self):
         for guild_id in self.guild_ids:
@@ -55,9 +57,11 @@ genai.configure(api_key=GEMINI_KEY)
 async def on_ready():
     print(f'Logged in as {client.user} (ID: {client.user.id})')
     print('------')
-    channel = client.get_channel(862846842068271115)
+    channel = client.get_channel(DEFAULT_CHANNEL)
     asyncio.create_task(clear_expired_messages(message_cooldown))
-    asyncio.create_task(draw_lottery(channel))
+    if not client.lottery_task_started:
+        asyncio.create_task(draw_lottery(channel))
+        client.lottery_task_started = True
 
 
 @client.event
@@ -80,8 +84,7 @@ async def on_message(message: discord.Message) -> None:
     if message.content.startswith("!"):
         return
 
-    if message.author not in lottery:
-        lottery.append(message.author)
+    lottery.append(message)
 
     if message.channel.topic is None or message.channel.topic.lower() != 'gemini':
         return

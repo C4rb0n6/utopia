@@ -19,6 +19,7 @@
      GOOGLE_API_KEY=your-google-cse-api-key
      GOOGLE_CSE_ID=your-google-cse-id
      WEATHER_API_KEY=your-openweather-api-key
+     DEFAULT_CHANNEL=your-lottery-message-channel
      ```
      Replace placeholders (`your-discord-bot-token`, `your-gemini-key`, etc.) with your actual tokens and IDs.
 
