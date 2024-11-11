@@ -1,16 +1,15 @@
-# Utopia Discord Bot
+# Utopia
 
-**Utopia is a Discord bot powered by Google Gemini, featuring slash commands, various personas, image understanding with the Vision model, and integration with Google CSE and OpenWeatherMap API.**
+**Utopia is a Discord bot powered by Google Gemini, featuring slash commands, various personas, image understanding, and integration with Google CSE and OpenWeatherMap API.**
 
-## Installation
+### Requirements
+* Python 3.9+
+* Libraries [google-generativeai, discord, dotenv]
+* API Keys [Discord, Google Gemini, OpenWeatherMap, Google CSE]
 
-1. **Clone the Repository:**
-   - Clone the repository to your local machine using the following command:
-     ```bash
-     git clone https://github.com/C4rb0n6/utopia.git
-     ```
+### Setup
 
-2. **Set Up Environment Variables:**
+**1. Set Up Environment Variables:**
    - Create a '.env' file in the root directory of the project.
    - Add the following environment variables with your actual keys and tokens:
      ```env
@@ -23,17 +22,5 @@
      ```
      Replace placeholders (`your-discord-bot-token`, `your-gemini-key`, etc.) with your actual tokens and IDs.
 
-3. **Install Dependencies:**
-   - Run the following command to install the required Python packages:
-     ```bash
-     pip install .
-     ```
-
-4. **Setup Discord Server:** 
-   - Create a channel with ```Gemini``` as the topic.
-
-5. **Run the Bot:**
-   - Run [bot.py](/bot.py) to start the bot:
-     ```bash
-     python bot.py
-     ```
+**2. Setup Discord Server:** 
+   - Create a channel with ```Gemini``` as the topic. This will serve as the chat channel.

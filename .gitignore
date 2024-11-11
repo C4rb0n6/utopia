@@ -1,10 +1,7 @@
-# Ignore PyCharm-specific files and directories
 .idea/
 
-# Ignore compiled Python files
 __pycache__/
 
-# Exclude specific files
 .env
 .gitignore
 venv
