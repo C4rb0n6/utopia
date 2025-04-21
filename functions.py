@@ -147,7 +147,7 @@ async def gemini(message: discord.Message, chat: genai.ChatSession = None) -> st
              "role": "user"},
             {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
         ]
-        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
         response = chat.send_message(message, safety_settings=safety_settings)
         return response.text

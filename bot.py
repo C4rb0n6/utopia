@@ -95,7 +95,7 @@ async def on_message(message: discord.Message) -> None:
         newdickt[user_id]["timestamp"] = timestamp
 
     if user_id not in messages_dict:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17', safety_settings=safety_settings)
         print(model)
         chat = model.start_chat()
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
@@ -107,7 +107,7 @@ async def on_message(message: discord.Message) -> None:
     chat = messages_dict[user_id]["chat"]
     async with message.channel.typing():
         if chat_model == "Gemini Pro Function Calling":
-            model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings, tools=tools)
+            model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17', safety_settings=safety_settings, tools=tools)
             chat = model.start_chat()
             messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": None,
                                       "timestamp": timestamp}
@@ -235,7 +235,7 @@ async def personas(interaction: discord.Interaction, option: app_commands.Choice
              "role": "user"},
             {"parts": [{"text": "Adopting " + persona[0]["role"] + " persona..."}], "role": "model"}
         ]
-        model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17', safety_settings=safety_settings)
         chat = model.start_chat(history=history)
         messages_dict[user_id] = {"chat": chat, "user_id": user_id, "messages": [], "persona": current_persona,
                                   "timestamp": timestamp}
